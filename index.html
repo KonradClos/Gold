@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Gold Portfolio</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#111111">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+
+  <!-- iOS Homescreen Icon -->
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+
+  <style>
+    body{font-family:-apple-system,system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:24px;background:#f7f7f7}
+    .card{background:#fff;border:1px solid #e5e5e5;border-radius:14px;padding:16px;max-width:680px;box-shadow:0 2px 10px rgba(0,0,0,.04)}
+    h1{font-size:20px;margin:0 0 12px}
+    label{display:block;font-size:13px;margin-top:12px;color:#333}
+    input{width:100%;padding:12px;font-size:16px;border:1px solid #d8d8d8;border-radius:10px;background:#fff}
+    button{margin-top:14px;width:100%;padding:12px;font-size:16px;border:0;border-radius:10px;background:#111;color:#fff}
+    button:disabled{opacity:.6}
+    .row{display:flex;justify-content:space-between;gap:12px;padding:6px 0;align-items:center}
+    .out{margin-top:14px;padding:12px;background:#eef7ff;border:1px solid #cfe7ff;border-radius:10px}
+    .muted{color:#666;font-size:12px;margin-top:10px;line-height:1.4}
+    .err{color:#b00020;font-size:13px;margin-top:10px}
+    .tag{font-size:12px;border:1px solid #ddd;border-radius:999px;padding:2px 8px;background:#fafafa}
+    .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+    .tab{border:1px solid #ddd;background:#fafafa;border-radius:999px;padding:8px 12px;font-size:14px}
+    .tab[aria-pressed="true"]{background:#111;color:#fff;border-color:#111}
+    canvas{width:100%;height:240px;background:#fff;border:1px solid #eee;border-radius:12px}
+    .small{font-size:12px;color:#444}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Gold-Portfolio (Hybrid)</h1>
+
+    <label for="ounces">Anzahl Unzen (troy oz)</label>
+    <input id="ounces" inputmode="decimal" placeholder="z. B. 12,5" />
+
+    <button id="refresh">Aktualisieren</button>
+    <div id="error" class="err" aria-live="polite"></div>
+
+    <div class="out" id="output" style="display:none;">
+      <div class="row">
+        <div>Goldpreis (Primär)</div>
+        <div><strong id="pPrimary">–</strong> <span class="tag" id="srcPrimary">–</span></div>
+      </div>
+      <div class="row">
+        <div>Goldpreis (Check)</div>
+        <div><strong id="pCheck">–</strong> <span class="tag" id="srcCheck">–</span></div>
+      </div>
+      <div class="row">
+        <div>Portfolio-Wert</div>
+        <div><strong id="portfolio">–</strong></div>
+      </div>
+      <div class="row">
+        <div class="small">Stand</div>
+        <div class="small" id="asOf">–</div>
+      </div>
+    </div>
+
+    <div class="tabs" role="group" aria-label="Zeitraum">
+      <button class="tab" id="t30"  aria-pressed="true">30 Tage</button>
+      <button class="tab" id="t90"  aria-pressed="false">90 Tage</button>
+      <button class="tab" id="t365" aria-pressed="false">365 Tage</button>
+    </div>
+
+    <div style="margin-top:10px">
+      <canvas id="chart" width="800" height="300"></canvas>
+      <div class="muted" id="chartHint">Lade Chart…</div>
+    </div>
+
+    <div class="muted">
+      Daten: Stooq (XAU/EUR und Historie). Historie per CSV-Download-Endpoint ist üblich über <code>/q/d/l/?s=...&i=d</code>. :contentReference[oaicite:1]{index=1}<br>
+      Check-FX: ECB USD/EUR (täglich, Referenzkurs) + Stooq XAU/USD → EUR/oz.
+    </div>
+  </div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const btn = $("refresh");
+  const err = $("error");
+  const out = $("output");
+
+  const pPrimary = $("pPrimary");
+  const pCheck = $("pCheck");
+  const srcPrimary = $("srcPrimary");
+  const srcCheck = $("srcCheck");
+  const portfolioEl = $("portfolio");
+  const asOfEl = $("asOf");
+
+  const canvas = $("chart");
+  const ctx = canvas.getContext("2d");
+  const chartHint = $("chartHint");
+
+  const tabs = [
+    { id: "t30", days: 30 },
+    { id: "t90", days: 90 },
+    { id: "t365", days: 365 },
+  ];
+  let selectedDays = 30;
+
+  function parseNumber(input){
+    const s = String(input).trim().replace(/\s/g,"").replace(",",".");
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  }
+  function fmtEUR(n){
+    return new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR"}).format(n);
+  }
+  function fmtPct(n){
+    const sign = n >= 0 ? "+" : "";
+    return sign + n.toFixed(2) + "%";
+  }
+  function yyyymmdd(d){
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,"0");
+    const dd = String(d.getDate()).padStart(2,"0");
+    return `${yyyy}${mm}${dd}`;
+  }
+
+  // --- Stooq: "last" snapshot (works without key) ---
+  async function fetchStooqLast(symbol){
+    const url = `https://stooq.com/q/l/?s=${encodeURIComponent(symbol)}&f=sd2t2ohlc&h=&e=csv`;
+    const res = await fetch(url, { cache: "no-store" });
+    if(!res.ok) throw new Error(`Stooq ${symbol} HTTP ${res.status}`);
+    const text = await res.text();
+    const lines = text.trim().split(/\r?\n/);
+    if(lines.length < 2) throw new Error(`Stooq ${symbol}: keine Daten`);
+    const cols = lines[1].split(",");
+    const [sym,date,time,open,high,low,close] = cols;
+    const closeNum = Number(close);
+    if(!Number.isFinite(closeNum)) throw new Error(`Stooq ${symbol}: ungültiger Close`);
+    return { sym, date, time, close: closeNum };
+  }
+
+  // --- Stooq: daily history CSV ---
+  // Commonly used pattern: /q/d/l/?s=TICKER&d1=YYYYMMDD&d2=YYYYMMDD&i=d :contentReference[oaicite:2]{index=2}
+  async function fetchStooqHistoryDaily(symbol, days){
+    const end = new Date();
+    // Buffer (Wochenenden/Feiertage): nimm mehr Kalendertage als days
+    const start = new Date(end);
+    start.setDate(end.getDate() - Math.max(10, Math.round(days * 1.6)));
+
+    const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(symbol)}&d1=${yyyymmdd(start)}&d2=${yyyymmdd(end)}&i=d`;
+    const res = await fetch(url, { cache: "no-store" });
+    if(!res.ok) throw new Error(`Stooq History ${symbol} HTTP ${res.status}`);
+    const csv = (await res.text()).trim();
+    const lines = csv.split(/\r?\n/);
+    // Header: Date,Open,High,Low,Close,Volume
+    if(lines.length < 3) throw new Error("Zu wenig historische Daten.");
+
+    const header = lines[0].split(",").map(s => s.trim().toLowerCase());
+    const idxDate  = header.indexOf("date");
+    const idxClose = header.indexOf("close");
+    if(idxDate < 0 || idxClose < 0) throw new Error("CSV-Format unerwartet (Date/Close fehlt).");
+
+    const rows = [];
+    for(let i=1;i<lines.length;i++){
+      const parts = lines[i].split(",");
+      const date = parts[idxDate];
+      const close = Number(parts[idxClose]);
+      if(date && Number.isFinite(close)){
+        rows.push({ date, close });
+      }
+    }
+
+    // Keep last N trading days
+    const sliced = rows.slice(-days);
+    return sliced;
+  }
+
+  // --- ECB USD per 1 EUR (last obs) ---
+  async function fetchEcbUsdPerEurLast(){
+    const url = "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?lastNObservations=1&format=sdmx-json";
+    const res = await fetch(url, { cache: "no-store" });
+    if(!res.ok) throw new Error(`ECB HTTP ${res.status}`);
+    const json = await res.json();
+    const series = json?.dataSets?.[0]?.series;
+    if(!series) throw new Error("ECB: keine Series gefunden");
+    const firstSeriesKey = Object.keys(series)[0];
+    const obs = series[firstSeriesKey]?.observations;
+    if(!obs) throw new Error("ECB: keine Observations gefunden");
+    const firstObsKey = Object.keys(obs)[0];
+    const value = obs[firstObsKey]?.[0];
+    if(!Number.isFinite(value)) throw new Error("ECB: ungültiger Wert");
+    return value; // USD per 1 EUR
+  }
+
+  function drawLineChart(points){
+    // points: [{date, close}] (close in EUR/oz)
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    if(!points || points.length < 2){
+      ctx.fillText("Zu wenig Daten für Chart.", 20, 40);
+      return;
+    }
+
+    const values = points.map(p => p.close);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+
+    const padL = 50, padR = 16, padT = 16, padB = 32;
+    const w = canvas.width - padL - padR;
+    const h = canvas.height - padT - padB;
+
+    const y = (v) => padT + (max === min ? h/2 : (max - v) * (h / (max - min)));
+    const x = (i) => padL + (i * (w / (points.length - 1)));
+
+    // axes
+    ctx.strokeStyle = "#ddd";
+    ctx.beginPath();
+    ctx.moveTo(padL, padT);
+    ctx.lineTo(padL, padT + h);
+    ctx.lineTo(padL + w, padT + h);
+    ctx.stroke();
+
+    // y labels (min/max)
+    ctx.fillStyle = "#444";
+    ctx.font = "12px -apple-system, system-ui, Segoe UI, Roboto, Arial";
+    ctx.fillText(fmtEUR(max), 8, padT + 10);
+    ctx.fillText(fmtEUR(min), 8, padT + h);
+
+    // line
+    ctx.strokeStyle = "#111";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for(let i=0;i<points.length;i++){
+      const px = x(i), py = y(points[i].close);
+      if(i===0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+
+    // last value marker
+    const last = points[points.length - 1];
+    const lx = x(points.length - 1), ly = y(last.close);
+    ctx.fillStyle = "#111";
+    ctx.beginPath();
+    ctx.arc(lx, ly, 4, 0, Math.PI*2);
+    ctx.fill();
+
+    // last date
+    ctx.fillStyle = "#666";
+    ctx.fillText(`${points[0].date} → ${last.date}`, padL, padT + h + 22);
+  }
+
+  async function refresh(){
+    err.textContent = "";
+    out.style.display = "none";
+    chartHint.textContent = "Lade…";
+
+    const ounces = parseNumber($("ounces").value);
+    if(ounces === null || ounces < 0){
+      err.textContent = "Bitte gib eine gültige Unzen-Zahl ein (z. B. 12,5).";
+      chartHint.textContent = "";
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = "Lade…";
+
+    try {
+      // Price hybrid
+      const xaueur = await fetchStooqLast("xaueur");
+      const eurPerOzPrimary = xaueur.close;
+
+      const xauusd = await fetchStooqLast("xauusd");
+      const usdPerEur = await fetchEcbUsdPerEurLast();
+      const eurPerOzCheck = xauusd.close / usdPerEur;
+
+      const portfolio = eurPerOzPrimary * ounces;
+
+      pPrimary.textContent = `${fmtEUR(eurPerOzPrimary)} / oz`;
+      srcPrimary.textContent = "Stooq XAUEUR";
+
+      const diffPct = ((eurPerOzPrimary - eurPerOzCheck) / eurPerOzCheck) * 100;
+      pCheck.textContent = `${fmtEUR(eurPerOzCheck)} / oz (${fmtPct(diffPct)})`;
+      srcCheck.textContent = "Stooq XAUUSD + ECB";
+
+      portfolioEl.textContent = fmtEUR(portfolio);
+      asOfEl.textContent = `Stooq: ${xaueur.date} ${xaueur.time || ""} | ECB: letzter Tageswert`;
+
+      out.style.display = "block";
+
+      // Chart (history)
+      const hist = await fetchStooqHistoryDaily("xaueur", selectedDays);
+      drawLineChart(hist);
+      chartHint.textContent = `Chart: Stooq XAUEUR (letzte ${selectedDays} Handelstage)`;
+    } catch(e){
+      err.textContent = "Fehler: " + (e?.message || e);
+      chartHint.textContent = "";
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Aktualisieren";
+    }
+  }
+
+  // Tabs
+  function setTab(days){
+    selectedDays = days;
+    for(const t of tabs){
+      $(t.id).setAttribute("aria-pressed", String(t.days === days));
+    }
+    refresh();
+  }
+  $("t30").addEventListener("click", () => setTab(30));
+  $("t90").addEventListener("click", () => setTab(90));
+  $("t365").addEventListener("click", () => setTab(365));
+
+  btn.addEventListener("click", refresh);
+
+  // Service Worker registration
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", async () => {
+      try { await navigator.serviceWorker.register("./sw.js"); } catch {}
+    });
+  }
+})();
+</script>
+</body>
+</html>
