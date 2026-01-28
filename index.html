@@ -201,11 +201,24 @@
     return rows.slice(-days);
   }
 
-  // -------- ECB USD per 1 EUR (last obs) --------
-  async function fetchEcbUsdPerEurLast(){
+  // --- ECB USD per 1 EUR (last obs) ---
+// Robust: try ECB SDMX-JSON, fallback to Frankfurter (ECB-based JSON)
+async function fetchEcbUsdPerEurLast(){
+  // 1) Try ECB SDMX-JSON
+  try {
     const url = "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?lastNObservations=1&format=sdmx-json";
-    const res = await fetchWithTimeout(url, { cache: "no-store" }, 15000);
+    const res = await fetchWithTimeout(url, {
+      cache: "no-store",
+      headers: {
+        "Accept": "application/json"
+      }
+    }, 15000);
+
     if(!res.ok) throw new Error(`ECB HTTP ${res.status}`);
+
+    // If ECB returns XML/HTML, this will be non-JSON
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    if(!ct.includes("json")) throw new Error("ECB returned non-JSON");
 
     const json = await res.json();
     const series = json?.dataSets?.[0]?.series;
@@ -220,126 +233,17 @@
     if(!Number.isFinite(value)) throw new Error("ECB: ungültiger Wert");
 
     return value; // USD per 1 EUR
+  } catch (e) {
+    // 2) Fallback: Frankfurter (ECB rates, JSON, CORS-friendly)
+    const url2 = "https://api.frankfurter.app/latest?from=EUR&to=USD";
+    const res2 = await fetchWithTimeout(url2, { cache: "no-store" }, 15000);
+    if(!res2.ok) throw new Error(`FX fallback HTTP ${res2.status}`);
+    const j2 = await res2.json();
+    const v2 = j2?.rates?.USD;
+    if(!Number.isFinite(v2)) throw new Error("FX fallback: ungültiger USD-Kurs");
+    return v2;
   }
-
-  // -------- chart --------
-  function drawLineChart(points){
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-
-    if(!points || points.length < 2){
-      ctx.fillStyle = "#444";
-      ctx.font = "14px -apple-system, system-ui, Segoe UI, Roboto, Arial";
-      ctx.fillText("Zu wenig Daten für Chart.", 20, 40);
-      return;
-    }
-
-    const values = points.map(p => p.close);
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-
-    const padL = 50, padR = 16, padT = 16, padB = 32;
-    const w = canvas.width - padL - padR;
-    const h = canvas.height - padT - padB;
-
-    const y = (v) => padT + (max === min ? h/2 : (max - v) * (h / (max - min)));
-    const x = (i) => padL + (i * (w / (points.length - 1)));
-
-    // axes
-    ctx.strokeStyle = "#ddd";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(padL, padT);
-    ctx.lineTo(padL, padT + h);
-    ctx.lineTo(padL + w, padT + h);
-    ctx.stroke();
-
-    // y labels (min/max)
-    ctx.fillStyle = "#444";
-    ctx.font = "12px -apple-system, system-ui, Segoe UI, Roboto, Arial";
-    ctx.fillText(fmtEUR(max), 8, padT + 10);
-    ctx.fillText(fmtEUR(min), 8, padT + h);
-
-    // line
-    ctx.strokeStyle = "#111";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    for(let i=0;i<points.length;i++){
-      const px = x(i), py = y(points[i].close);
-      if(i===0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
-    }
-    ctx.stroke();
-
-    // last marker
-    const last = points[points.length - 1];
-    const lx = x(points.length - 1), ly = y(last.close);
-    ctx.fillStyle = "#111";
-    ctx.beginPath();
-    ctx.arc(lx, ly, 4, 0, Math.PI*2);
-    ctx.fill();
-
-    // range label
-    ctx.fillStyle = "#666";
-    ctx.font = "12px -apple-system, system-ui, Segoe UI, Roboto, Arial";
-    ctx.fillText(`${points[0].date} → ${last.date}`, padL, padT + h + 22);
-  }
-
-  // -------- main refresh --------
-  async function refresh(){
-    err.textContent = "";
-    out.style.display = "none";
-    chartHint.textContent = "Lade…";
-
-    const ounces = parseNumber($("ounces").value);
-    if(ounces === null || ounces < 0){
-      err.textContent = "Bitte gib eine gültige Unzen-Zahl ein (z. B. 12,5).";
-      chartHint.textContent = "";
-      return;
-    }
-
-    btn.disabled = true;
-    btn.textContent = "Lade…";
-
-    try {
-      // hybrid price
-      const xaueur = await fetchStooqLast("xaueur");
-      const eurPerOzPrimary = xaueur.close;
-
-      const xauusd = await fetchStooqLast("xauusd");
-      const usdPerEur = await fetchEcbUsdPerEurLast();
-      const eurPerOzCheck = xauusd.close / usdPerEur;
-
-      const portfolio = eurPerOzPrimary * ounces;
-
-      pPrimary.textContent = `${fmtEUR(eurPerOzPrimary)} / oz`;
-      srcPrimary.textContent = "Stooq XAUEUR";
-
-      const diffPct = ((eurPerOzPrimary - eurPerOzCheck) / eurPerOzCheck) * 100;
-      pCheck.textContent = `${fmtEUR(eurPerOzCheck)} / oz (${fmtPct(diffPct)})`;
-      srcCheck.textContent = "Stooq XAUUSD + ECB";
-
-      portfolioEl.textContent = fmtEUR(portfolio);
-      asOfEl.textContent = `Stooq: ${xaueur.date} ${xaueur.time || ""} | ECB: letzter Tageswert`;
-
-      out.style.display = "block";
-
-      // chart
-      const hist = await fetchStooqHistoryDaily("xaueur", selectedDays);
-      drawLineChart(hist);
-      chartHint.textContent = `Chart: Stooq XAUEUR (letzte ${selectedDays} Handelstage)`;
-    } catch(e){
-      console.error(e);
-      if (e?.name === "AbortError") {
-        err.textContent = "Fehler: Timeout beim Laden der Daten.";
-      } else {
-        err.textContent = "Fehler: " + (e?.message || String(e));
-      }
-      chartHint.textContent = "";
-    } finally {
-      btn.disabled = false;
-      btn.textContent = "Aktualisieren";
-    }
-  }
+}
 
   // tabs
   function setTab(days){
