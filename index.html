@@ -5,14 +5,12 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Gold Portfolio</title>
 
-  <!-- PWA -->
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#111111">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
 
-  <!-- Optional icons (wenn Dateien fehlen: App läuft trotzdem) -->
   <link rel="apple-touch-icon" href="./apple-touch-icon.png">
   <link rel="icon" href="./favicon.ico">
 
@@ -27,14 +25,13 @@
     .row{display:flex;justify-content:space-between;gap:12px;padding:6px 0;align-items:center}
     .out{margin-top:14px;padding:12px;background:#eef7ff;border:1px solid #cfe7ff;border-radius:10px}
     .muted{color:#666;font-size:12px;margin-top:10px;line-height:1.4}
-    .err{color:#b00020;font-size:13px;margin-top:10px}
+    .err{color:#b00020;font-size:13px;margin-top:10px;white-space:pre-wrap}
     .tag{font-size:12px;border:1px solid #ddd;border-radius:999px;padding:2px 8px;background:#fafafa}
     .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
     .tab{border:1px solid #ddd;background:#fafafa;border-radius:999px;padding:8px 12px;font-size:14px;cursor:pointer}
     .tab[aria-pressed="true"]{background:#111;color:#fff;border-color:#111}
     canvas{width:100%;height:240px;background:#fff;border:1px solid #eee;border-radius:12px}
     .small{font-size:12px;color:#444}
-    code{background:#f2f2f2;padding:2px 6px;border-radius:6px}
   </style>
 </head>
 
@@ -75,12 +72,12 @@
 
     <div style="margin-top:10px">
       <canvas id="chart" width="800" height="300"></canvas>
-      <div class="muted" id="chartHint">Lade Chart…</div>
+      <div class="muted" id="chartHint">Bereit.</div>
     </div>
 
     <div class="muted">
-      Daten: Stooq (XAU/EUR und Historie) via CORS-Proxy.<br>
-      Check-FX: ECB USD/EUR (SDMX-JSON wenn möglich) sonst Frankfurter (ECB-basiert).
+      Daten: Stooq (XAU/EUR und Historie) via Proxy-Fallbacks.<br>
+      Check-FX: ECB (JSON wenn möglich) sonst Frankfurter (ECB-basiert).
     </div>
   </div>
 
@@ -110,6 +107,11 @@
   ];
   let selectedDays = 30;
 
+  // Safety: always surface unexpected promise errors
+  window.addEventListener("unhandledrejection", (e) => {
+    console.error("Unhandled rejection:", e.reason);
+  });
+
   function parseNumber(input){
     const s = String(input).trim().replace(/\s/g,"").replace(",",".");
     const n = Number(s);
@@ -132,17 +134,11 @@
     return `${yyyy}${mm}${dd}`;
   }
 
-  // --- CORS proxy for Stooq ---
-  function stooqViaProxy(url){
-    return "https://api.allorigins.win/raw?url=" + encodeURIComponent(url);
-  }
-
   async function fetchWithTimeout(url, options = {}, timeoutMs = 15000){
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
-      const res = await fetch(url, { ...options, signal: ctrl.signal });
-      return res;
+      return await fetch(url, { ...options, signal: ctrl.signal });
     } finally {
       clearTimeout(t);
     }
@@ -151,32 +147,58 @@
   async function withRetry(fn, retries = 2, delayMs = 900){
     let lastErr;
     for(let i=0;i<=retries;i++){
-      try {
-        return await fn();
-      } catch(e){
-        lastErr = e;
-        await new Promise(r => setTimeout(r, delayMs));
-      }
+      try { return await fn(); }
+      catch(e){ lastErr = e; await new Promise(r => setTimeout(r, delayMs)); }
     }
     throw lastErr;
   }
 
-  // --- Stooq: "last" snapshot (CSV) ---
+  // --- Proxy fallback chain ---
+  function proxyUrls(originalUrl){
+    return [
+      "https://api.allorigins.win/raw?url=" + encodeURIComponent(originalUrl),
+      "https://corsproxy.io/?" + encodeURIComponent(originalUrl),
+      // jina.ai returns text; good as a last resort for public URLs
+      "https://r.jina.ai/http://" + originalUrl.replace(/^https?:\/\//, "")
+    ];
+  }
+
+  async function fetchTextViaProxies(originalUrl, timeoutMs){
+    const candidates = proxyUrls(originalUrl);
+    let lastErr = null;
+
+    for (const u of candidates){
+      try {
+        const res = await fetchWithTimeout(u, { cache: "no-store" }, timeoutMs);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const text = await res.text();
+
+        // If proxy returns HTML error page, detect common patterns
+        const t = text.trim();
+        if (t.startsWith("<!doctype") || t.startsWith("<html") || t.startsWith("<?xml")){
+          // allow XML only if we explicitly expect it elsewhere; for Stooq CSV we reject
+          throw new Error("Proxy returned HTML/XML page");
+        }
+        return text;
+      } catch(e){
+        lastErr = e;
+      }
+    }
+    throw new Error("Alle Proxies fehlgeschlagen (Netzwerk/Firewall?)");
+  }
+
+  // --- Stooq: last snapshot (CSV) ---
   async function fetchStooqLast(symbol){
     const url = `https://stooq.com/q/l/?s=${encodeURIComponent(symbol)}&f=sd2t2ohlc&h=&e=csv`;
-    const res = await fetchWithTimeout(stooqViaProxy(url), { cache: "no-store" }, 20000);
-    if(!res.ok) throw new Error(`Stooq ${symbol} HTTP ${res.status}`);
+    const text = await fetchTextViaProxies(url, 20000);
 
-    const text = await res.text();
     const lines = text.trim().split(/\r?\n/);
     if(lines.length < 2) throw new Error(`Stooq ${symbol}: keine Daten`);
 
     const cols = lines[1].split(",");
     const [sym,date,time,open,high,low,close] = cols;
-
     const closeNum = Number(close);
     if(!Number.isFinite(closeNum)) throw new Error(`Stooq ${symbol}: ungültiger Close`);
-
     return { sym, date, time, close: closeNum };
   }
 
@@ -187,11 +209,9 @@
     start.setDate(end.getDate() - Math.max(10, Math.round(days * 1.6)));
 
     const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(symbol)}&d1=${yyyymmdd(start)}&d2=${yyyymmdd(end)}&i=d`;
-    const res = await fetchWithTimeout(stooqViaProxy(url), { cache: "no-store" }, 25000);
-    if(!res.ok) throw new Error(`Stooq History ${symbol} HTTP ${res.status}`);
+    const csv = await fetchTextViaProxies(url, 25000);
 
-    const csv = (await res.text()).trim();
-    const lines = csv.split(/\r?\n/);
+    const lines = csv.trim().split(/\r?\n/);
     if(lines.length < 3) throw new Error("Zu wenig historische Daten.");
 
     const header = lines[0].split(",").map(s => s.trim().toLowerCase());
@@ -204,18 +224,15 @@
       const parts = lines[i].split(",");
       const date = parts[idxDate];
       const close = Number(parts[idxClose]);
-      if(date && Number.isFinite(close)){
-        rows.push({ date, close });
-      }
+      if(date && Number.isFinite(close)) rows.push({ date, close });
     }
-
     if(rows.length < 2) throw new Error("Zu wenig gültige Chart-Daten.");
     return rows.slice(-days);
   }
 
-  // --- ECB USD per 1 EUR (robust) ---
-  async function fetchEcbUsdPerEurLast(){
-    // 1) Try ECB SDMX-JSON
+  // --- FX: ECB JSON try, fallback Frankfurter ---
+  async function fetchEurUsd(){
+    // Try ECB SDMX-JSON
     try {
       const url = "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?lastNObservations=1&format=sdmx-json";
       const res = await fetchWithTimeout(url, {
@@ -224,25 +241,20 @@
       }, 15000);
 
       if(!res.ok) throw new Error(`ECB HTTP ${res.status}`);
-
       const ct = (res.headers.get("content-type") || "").toLowerCase();
       if(!ct.includes("json")) throw new Error("ECB returned non-JSON");
 
       const json = await res.json();
       const series = json?.dataSets?.[0]?.series;
-      if(!series) throw new Error("ECB: keine Series gefunden");
+      const firstSeriesKey = series ? Object.keys(series)[0] : null;
+      const obs = firstSeriesKey ? series[firstSeriesKey]?.observations : null;
+      const firstObsKey = obs ? Object.keys(obs)[0] : null;
+      const value = firstObsKey ? obs[firstObsKey]?.[0] : null;
 
-      const firstSeriesKey = Object.keys(series)[0];
-      const obs = series[firstSeriesKey]?.observations;
-      if(!obs) throw new Error("ECB: keine Observations gefunden");
-
-      const firstObsKey = Object.keys(obs)[0];
-      const value = obs[firstObsKey]?.[0];
       if(!Number.isFinite(value)) throw new Error("ECB: ungültiger Wert");
-
       return value; // USD per 1 EUR
-    } catch (e) {
-      // 2) Fallback: Frankfurter (ECB-based, JSON, CORS ok)
+    } catch(_) {
+      // Frankfurter (ECB-based)
       const url2 = "https://api.frankfurter.app/latest?from=EUR&to=USD";
       const res2 = await fetchWithTimeout(url2, { cache: "no-store" }, 15000);
       if(!res2.ok) throw new Error(`FX fallback HTTP ${res2.status}`);
@@ -274,7 +286,6 @@
     const y = (v) => padT + (max === min ? h/2 : (max - v) * (h / (max - min)));
     const x = (i) => padL + (i * (w / (points.length - 1)));
 
-    // axes
     ctx.strokeStyle = "#ddd";
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -283,13 +294,11 @@
     ctx.lineTo(padL + w, padT + h);
     ctx.stroke();
 
-    // y labels
     ctx.fillStyle = "#444";
     ctx.font = "12px -apple-system, system-ui, Segoe UI, Roboto, Arial";
     ctx.fillText(fmtEUR(max), 8, padT + 10);
     ctx.fillText(fmtEUR(min), 8, padT + h);
 
-    // line
     ctx.strokeStyle = "#111";
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -300,7 +309,6 @@
     }
     ctx.stroke();
 
-    // last marker
     const last = points[points.length - 1];
     const lx = x(points.length - 1), ly = y(last.close);
     ctx.fillStyle = "#111";
@@ -308,17 +316,14 @@
     ctx.arc(lx, ly, 4, 0, Math.PI*2);
     ctx.fill();
 
-    // range label
     ctx.fillStyle = "#666";
     ctx.font = "12px -apple-system, system-ui, Segoe UI, Roboto, Arial";
     ctx.fillText(`${points[0].date} → ${last.date}`, padL, padT + h + 22);
   }
 
   function friendlyError(e){
-    if(e?.name === "AbortError") return "Timeout beim Laden der Daten.";
-    const msg = e?.message || String(e);
-    if(String(msg).toLowerCase().includes("failed to fetch")) return "Netzwerkfehler beim Laden der Daten.";
-    return msg;
+    if(e?.name === "AbortError") return "Timeout beim Laden (Netzwerk/Firewall?).";
+    return e?.message || String(e);
   }
 
   async function refresh(){
@@ -337,12 +342,12 @@
     btn.textContent = "Lade…";
 
     try {
-      // Prices (with retry because free proxy can be flaky)
+      // Prices
       const xaueur = await withRetry(() => fetchStooqLast("xaueur"), 2, 900);
       const eurPerOzPrimary = xaueur.close;
 
       const xauusd = await withRetry(() => fetchStooqLast("xauusd"), 2, 900);
-      const usdPerEur = await withRetry(() => fetchEcbUsdPerEurLast(), 1, 700);
+      const usdPerEur = await withRetry(() => fetchEurUsd(), 1, 700);
       const eurPerOzCheck = xauusd.close / usdPerEur;
 
       const portfolio = eurPerOzPrimary * ounces;
@@ -384,17 +389,8 @@
   $("t30").addEventListener("click", () => setTab(30));
   $("t90").addEventListener("click", () => setTab(90));
   $("t365").addEventListener("click", () => setTab(365));
-
   btn.addEventListener("click", refresh);
 
-  // Service Worker (optional)
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", async () => {
-      try { await navigator.serviceWorker.register("./sw.js"); } catch {}
-    });
-  }
-
-  // initial load
   refresh();
 })();
 </script>
