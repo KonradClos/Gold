@@ -1,10 +1,8 @@
- name: Update gold data
-
+name: Test
 on:
   workflow_dispatch:
-
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "workflow ok"
+ a:
+  runs-on: ubuntu-latest
+  steps:
+    - run: echo ok
