@@ -12,7 +12,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
 
-  <!-- Optional icons (wenn Dateien fehlen: kein Problem für die App) -->
+  <!-- Optional icons (wenn Dateien fehlen: App läuft trotzdem) -->
   <link rel="apple-touch-icon" href="./apple-touch-icon.png">
   <link rel="icon" href="./favicon.ico">
 
@@ -79,8 +79,8 @@
     </div>
 
     <div class="muted">
-      Daten: Stooq (XAU/EUR und Historie).<br>
-      Check-FX: ECB USD/EUR (täglich, Referenzkurs) + Stooq XAU/USD → EUR/oz.
+      Daten: Stooq (XAU/EUR und Historie) via CORS-Proxy.<br>
+      Check-FX: ECB USD/EUR (SDMX-JSON wenn möglich) sonst Frankfurter (ECB-basiert).
     </div>
   </div>
 
@@ -132,9 +132,7 @@
     return `${yyyy}${mm}${dd}`;
   }
 
-  // -------- network helpers --------
-
-  // Stooq blocks browser CORS on GitHub Pages. Use a simple CORS proxy.
+  // --- CORS proxy for Stooq ---
   function stooqViaProxy(url){
     return "https://api.allorigins.win/raw?url=" + encodeURIComponent(url);
   }
@@ -150,10 +148,23 @@
     }
   }
 
-  // -------- Stooq: last snapshot (CSV) --------
+  async function withRetry(fn, retries = 2, delayMs = 900){
+    let lastErr;
+    for(let i=0;i<=retries;i++){
+      try {
+        return await fn();
+      } catch(e){
+        lastErr = e;
+        await new Promise(r => setTimeout(r, delayMs));
+      }
+    }
+    throw lastErr;
+  }
+
+  // --- Stooq: "last" snapshot (CSV) ---
   async function fetchStooqLast(symbol){
     const url = `https://stooq.com/q/l/?s=${encodeURIComponent(symbol)}&f=sd2t2ohlc&h=&e=csv`;
-    const res = await fetchWithTimeout(stooqViaProxy(url), { cache: "no-store" }, 15000);
+    const res = await fetchWithTimeout(stooqViaProxy(url), { cache: "no-store" }, 20000);
     if(!res.ok) throw new Error(`Stooq ${symbol} HTTP ${res.status}`);
 
     const text = await res.text();
@@ -169,14 +180,14 @@
     return { sym, date, time, close: closeNum };
   }
 
-  // -------- Stooq: daily history (CSV) --------
+  // --- Stooq: daily history CSV ---
   async function fetchStooqHistoryDaily(symbol, days){
     const end = new Date();
     const start = new Date(end);
     start.setDate(end.getDate() - Math.max(10, Math.round(days * 1.6)));
 
     const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(symbol)}&d1=${yyyymmdd(start)}&d2=${yyyymmdd(end)}&i=d`;
-    const res = await fetchWithTimeout(stooqViaProxy(url), { cache: "no-store" }, 20000);
+    const res = await fetchWithTimeout(stooqViaProxy(url), { cache: "no-store" }, 25000);
     if(!res.ok) throw new Error(`Stooq History ${symbol} HTTP ${res.status}`);
 
     const csv = (await res.text()).trim();
@@ -198,54 +209,170 @@
       }
     }
 
+    if(rows.length < 2) throw new Error("Zu wenig gültige Chart-Daten.");
     return rows.slice(-days);
   }
 
-  // --- ECB USD per 1 EUR (last obs) ---
-// Robust: try ECB SDMX-JSON, fallback to Frankfurter (ECB-based JSON)
-async function fetchEcbUsdPerEurLast(){
-  // 1) Try ECB SDMX-JSON
-  try {
-    const url = "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?lastNObservations=1&format=sdmx-json";
-    const res = await fetchWithTimeout(url, {
-      cache: "no-store",
-      headers: {
-        "Accept": "application/json"
-      }
-    }, 15000);
+  // --- ECB USD per 1 EUR (robust) ---
+  async function fetchEcbUsdPerEurLast(){
+    // 1) Try ECB SDMX-JSON
+    try {
+      const url = "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?lastNObservations=1&format=sdmx-json";
+      const res = await fetchWithTimeout(url, {
+        cache: "no-store",
+        headers: { "Accept": "application/json" }
+      }, 15000);
 
-    if(!res.ok) throw new Error(`ECB HTTP ${res.status}`);
+      if(!res.ok) throw new Error(`ECB HTTP ${res.status}`);
 
-    // If ECB returns XML/HTML, this will be non-JSON
-    const ct = (res.headers.get("content-type") || "").toLowerCase();
-    if(!ct.includes("json")) throw new Error("ECB returned non-JSON");
+      const ct = (res.headers.get("content-type") || "").toLowerCase();
+      if(!ct.includes("json")) throw new Error("ECB returned non-JSON");
 
-    const json = await res.json();
-    const series = json?.dataSets?.[0]?.series;
-    if(!series) throw new Error("ECB: keine Series gefunden");
+      const json = await res.json();
+      const series = json?.dataSets?.[0]?.series;
+      if(!series) throw new Error("ECB: keine Series gefunden");
 
-    const firstSeriesKey = Object.keys(series)[0];
-    const obs = series[firstSeriesKey]?.observations;
-    if(!obs) throw new Error("ECB: keine Observations gefunden");
+      const firstSeriesKey = Object.keys(series)[0];
+      const obs = series[firstSeriesKey]?.observations;
+      if(!obs) throw new Error("ECB: keine Observations gefunden");
 
-    const firstObsKey = Object.keys(obs)[0];
-    const value = obs[firstObsKey]?.[0];
-    if(!Number.isFinite(value)) throw new Error("ECB: ungültiger Wert");
+      const firstObsKey = Object.keys(obs)[0];
+      const value = obs[firstObsKey]?.[0];
+      if(!Number.isFinite(value)) throw new Error("ECB: ungültiger Wert");
 
-    return value; // USD per 1 EUR
-  } catch (e) {
-    // 2) Fallback: Frankfurter (ECB rates, JSON, CORS-friendly)
-    const url2 = "https://api.frankfurter.app/latest?from=EUR&to=USD";
-    const res2 = await fetchWithTimeout(url2, { cache: "no-store" }, 15000);
-    if(!res2.ok) throw new Error(`FX fallback HTTP ${res2.status}`);
-    const j2 = await res2.json();
-    const v2 = j2?.rates?.USD;
-    if(!Number.isFinite(v2)) throw new Error("FX fallback: ungültiger USD-Kurs");
-    return v2;
+      return value; // USD per 1 EUR
+    } catch (e) {
+      // 2) Fallback: Frankfurter (ECB-based, JSON, CORS ok)
+      const url2 = "https://api.frankfurter.app/latest?from=EUR&to=USD";
+      const res2 = await fetchWithTimeout(url2, { cache: "no-store" }, 15000);
+      if(!res2.ok) throw new Error(`FX fallback HTTP ${res2.status}`);
+      const j2 = await res2.json();
+      const v2 = j2?.rates?.USD;
+      if(!Number.isFinite(v2)) throw new Error("FX fallback: ungültiger USD-Kurs");
+      return v2;
+    }
   }
-}
 
-  // tabs
+  function drawLineChart(points){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    if(!points || points.length < 2){
+      ctx.fillStyle = "#444";
+      ctx.font = "14px -apple-system, system-ui, Segoe UI, Roboto, Arial";
+      ctx.fillText("Zu wenig Daten für Chart.", 20, 40);
+      return;
+    }
+
+    const values = points.map(p => p.close);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+
+    const padL = 50, padR = 16, padT = 16, padB = 32;
+    const w = canvas.width - padL - padR;
+    const h = canvas.height - padT - padB;
+
+    const y = (v) => padT + (max === min ? h/2 : (max - v) * (h / (max - min)));
+    const x = (i) => padL + (i * (w / (points.length - 1)));
+
+    // axes
+    ctx.strokeStyle = "#ddd";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padL, padT);
+    ctx.lineTo(padL, padT + h);
+    ctx.lineTo(padL + w, padT + h);
+    ctx.stroke();
+
+    // y labels
+    ctx.fillStyle = "#444";
+    ctx.font = "12px -apple-system, system-ui, Segoe UI, Roboto, Arial";
+    ctx.fillText(fmtEUR(max), 8, padT + 10);
+    ctx.fillText(fmtEUR(min), 8, padT + h);
+
+    // line
+    ctx.strokeStyle = "#111";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for(let i=0;i<points.length;i++){
+      const px = x(i), py = y(points[i].close);
+      if(i===0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+
+    // last marker
+    const last = points[points.length - 1];
+    const lx = x(points.length - 1), ly = y(last.close);
+    ctx.fillStyle = "#111";
+    ctx.beginPath();
+    ctx.arc(lx, ly, 4, 0, Math.PI*2);
+    ctx.fill();
+
+    // range label
+    ctx.fillStyle = "#666";
+    ctx.font = "12px -apple-system, system-ui, Segoe UI, Roboto, Arial";
+    ctx.fillText(`${points[0].date} → ${last.date}`, padL, padT + h + 22);
+  }
+
+  function friendlyError(e){
+    if(e?.name === "AbortError") return "Timeout beim Laden der Daten.";
+    const msg = e?.message || String(e);
+    if(String(msg).toLowerCase().includes("failed to fetch")) return "Netzwerkfehler beim Laden der Daten.";
+    return msg;
+  }
+
+  async function refresh(){
+    err.textContent = "";
+    out.style.display = "none";
+    chartHint.textContent = "Lade…";
+
+    const ounces = parseNumber($("ounces").value);
+    if(ounces === null || ounces < 0){
+      err.textContent = "Bitte gib eine gültige Unzen-Zahl ein (z. B. 12,5).";
+      chartHint.textContent = "";
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = "Lade…";
+
+    try {
+      // Prices (with retry because free proxy can be flaky)
+      const xaueur = await withRetry(() => fetchStooqLast("xaueur"), 2, 900);
+      const eurPerOzPrimary = xaueur.close;
+
+      const xauusd = await withRetry(() => fetchStooqLast("xauusd"), 2, 900);
+      const usdPerEur = await withRetry(() => fetchEcbUsdPerEurLast(), 1, 700);
+      const eurPerOzCheck = xauusd.close / usdPerEur;
+
+      const portfolio = eurPerOzPrimary * ounces;
+
+      pPrimary.textContent = `${fmtEUR(eurPerOzPrimary)} / oz`;
+      srcPrimary.textContent = "Stooq XAUEUR";
+
+      const diffPct = ((eurPerOzPrimary - eurPerOzCheck) / eurPerOzCheck) * 100;
+      pCheck.textContent = `${fmtEUR(eurPerOzCheck)} / oz (${fmtPct(diffPct)})`;
+      srcCheck.textContent = "Stooq XAUUSD + FX";
+
+      portfolioEl.textContent = fmtEUR(portfolio);
+      asOfEl.textContent = `Stooq: ${xaueur.date} ${xaueur.time || ""} | FX: letzter Tageswert`;
+
+      out.style.display = "block";
+
+      // Chart
+      const hist = await withRetry(() => fetchStooqHistoryDaily("xaueur", selectedDays), 2, 1100);
+      drawLineChart(hist);
+      chartHint.textContent = `Chart: Stooq XAUEUR (letzte ${selectedDays} Handelstage)`;
+    } catch(e){
+      console.error(e);
+      err.textContent = "Fehler: " + friendlyError(e);
+      chartHint.textContent = "";
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Aktualisieren";
+    }
+  }
+
   function setTab(days){
     selectedDays = days;
     for(const t of tabs){
@@ -253,13 +380,14 @@ async function fetchEcbUsdPerEurLast(){
     }
     refresh();
   }
+
   $("t30").addEventListener("click", () => setTab(30));
   $("t90").addEventListener("click", () => setTab(90));
   $("t365").addEventListener("click", () => setTab(365));
 
   btn.addEventListener("click", refresh);
 
-  // service worker (optional)
+  // Service Worker (optional)
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", async () => {
       try { await navigator.serviceWorker.register("./sw.js"); } catch {}
