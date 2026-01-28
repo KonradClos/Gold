@@ -1,8 +1,94 @@
-name: Test
+name: Update gold data
+
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "*/30 * * * *"
+  push:
+    paths:
+      - ".github/workflows/update-gold.yml"
+
+permissions:
+  contents: write
+
 jobs:
- a:
-  runs-on: ubuntu-latest
-  steps:
-    - run: echo ok
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch gold prices and write JSON
+        run: |
+          set -euo pipefail
+          mkdir -p data
+
+          curl -fLsS "https://stooq.com/q/l/?s=xaueur&f=sd2t2ohlc&h=&e=csv" -o xaueur.csv
+          curl -fLsS "https://stooq.com/q/l/?s=xauusd&f=sd2t2ohlc&h=&e=csv" -o xauusd.csv
+          curl -fLsS \
+            -H "Accept: application/json" \
+            -A "Mozilla/5.0 (GitHub Actions)" \
+            "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?lastNObservations=1&format=sdmx-json" \
+            -o ecb.json
+
+          test -s ecb.json || (echo "ECB response empty"; exit 1)
+
+          python3 - << 'EOF'
+          import csv, json, datetime, sys
+
+          def read_stooq(path):
+              with open(path, newline="", encoding="utf-8") as f:
+                  r = csv.DictReader(f)
+                  row = next(r)
+              return {
+                  "symbol": row["Symbol"],
+                  "date": row["Date"],
+                  "time": row.get("Time",""),
+                  "close": float(row["Close"])
+              }
+
+          xaueur = read_stooq("xaueur.csv")
+          xauusd = read_stooq("xauusd.csv")
+
+          with open("ecb.json", encoding="utf-8") as f:
+              txt = f.read().strip()
+          if not txt:
+              print("ECB JSON empty", file=sys.stderr)
+              sys.exit(1)
+
+          ecb = json.loads(txt)
+          series = ecb["dataSets"][0]["series"]
+          k = next(iter(series))
+          obs = series[k]["observations"]
+          ok = next(iter(obs))
+          usd_per_eur = float(obs[ok][0])
+
+          eur_per_oz_primary = xaueur["close"]
+          eur_per_oz_check = xauusd["close"] / usd_per_eur
+
+          out = {
+              "asOf": datetime.datetime.utcnow().isoformat() + "Z",
+              "primary": {
+                  "source": "stooq-xaueur",
+                  "eurPerOz": eur_per_oz_primary,
+                  "stooqDate": xaueur["date"],
+                  "stooqTime": xaueur["time"]
+              },
+              "check": {
+                  "source": "stooq-xauusd + ecb-usd-per-eur",
+                  "eurPerOz": eur_per_oz_check,
+                  "usdPerEur": usd_per_eur,
+                  "xauusdUsdPerOz": xauusd["close"]
+              }
+          }
+
+          with open("data/price.json", "w", encoding="utf-8") as f:
+              json.dump(out, f, ensure_ascii=False, indent=2)
+          EOF
+
+      - name: Commit & push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/price.json
+          git diff --cached --quiet || git commit -m "Update gold price data"
+          git push origin HEAD
