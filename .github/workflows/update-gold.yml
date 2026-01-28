@@ -1,29 +1,24 @@
-name: Update gold data
-
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: "*/5 * * * *"
-
-permissions:
-  contents: write
-
-jobs:
-  update:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
       - name: Fetch gold prices and write JSON
         run: |
+          set -euo pipefail
           mkdir -p data
 
-          curl -fsSL "https://stooq.com/q/l/?s=xaueur&f=sd2t2ohlc&h=&e=csv" -o xaueur.csv
-          curl -fsSL "https://stooq.com/q/l/?s=xauusd&f=sd2t2ohlc&h=&e=csv" -o xauusd.csv
-          curl -fsSL "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?lastNObservations=1&format=sdmx-json" -o ecb.json
+          # Fetch Stooq CSV (fail if not 200)
+          curl -fLsS "https://stooq.com/q/l/?s=xaueur&f=sd2t2ohlc&h=&e=csv" -o xaueur.csv
+          curl -fLsS "https://stooq.com/q/l/?s=xauusd&f=sd2t2ohlc&h=&e=csv" -o xauusd.csv
+
+          # Fetch ECB SDMX-JSON (fail if not 200). Add UA and accept header.
+          curl -fLsS \
+            -H "Accept: application/json" \
+            -A "Mozilla/5.0 (GitHub Actions)" \
+            "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?lastNObservations=1&format=sdmx-json" \
+            -o ecb.json
+
+          # Quick sanity check: show first line if needed
+          test -s ecb.json || (echo "ECB response empty"; exit 1)
 
           python3 - << 'EOF'
-          import csv, json, datetime
+          import csv, json, datetime, sys
 
           def read_stooq(path):
               with open(path, newline="", encoding="utf-8") as f:
@@ -40,7 +35,17 @@ jobs:
           xauusd = read_stooq("xauusd.csv")
 
           with open("ecb.json", encoding="utf-8") as f:
-              ecb = json.load(f)
+              txt = f.read().strip()
+          if not txt:
+              print("ECB JSON empty", file=sys.stderr)
+              sys.exit(1)
+
+          try:
+              ecb = json.loads(txt)
+          except Exception as e:
+              print("ECB JSON parse error:", e, file=sys.stderr)
+              print("First 300 chars of response:", txt[:300], file=sys.stderr)
+              sys.exit(1)
 
           series = ecb["dataSets"][0]["series"]
           k = next(iter(series))
@@ -70,10 +75,3 @@ jobs:
           with open("data/price.json", "w", encoding="utf-8") as f:
               json.dump(out, f, ensure_ascii=False, indent=2)
           EOF
-
-      - name: Commit & push
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/price.json
-          git diff --cached --quiet || (git commit -m "Update gold price data" && git push)
