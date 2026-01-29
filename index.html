@@ -16,15 +16,16 @@
     input{width:100%;padding:12px;font-size:16px;border:1px solid #d8d8d8;border-radius:10px}
     button{margin-top:14px;width:100%;padding:12px;font-size:16px;border:0;border-radius:10px;background:#111;color:#fff;cursor:pointer}
     button:disabled{opacity:.6}
-    .row{display:flex;justify-content:space-between;padding:6px 0}
+    .row{display:flex;justify-content:space-between;gap:12px;padding:6px 0;align-items:center}
     .out{margin-top:14px;padding:12px;background:#eef7ff;border:1px solid #cfe7ff;border-radius:10px}
     .muted{color:#666;font-size:12px;margin-top:10px}
-    .err{color:#b00020;font-size:13px;margin-top:10px}
+    .err{color:#b00020;font-size:13px;margin-top:10px;white-space:pre-wrap}
     .tag{font-size:12px;border:1px solid #ddd;border-radius:999px;padding:2px 8px;background:#fafafa}
     .tabs{display:flex;gap:8px;margin-top:12px}
     .tab{border:1px solid #ddd;background:#fafafa;border-radius:999px;padding:8px 12px;cursor:pointer}
     .tab.active{background:#111;color:#fff;border-color:#111}
-    canvas{width:100%;height:260px;border:1px solid #eee;border-radius:12px;margin-top:8px}
+    canvas{width:100%;height:260px;border:1px solid #eee;border-radius:12px;margin-top:8px;background:#fff}
+    .debug{margin-top:10px;padding:10px;border:1px dashed #bbb;border-radius:10px;background:#fafafa;font-size:12px;white-space:pre-wrap}
   </style>
 </head>
 
@@ -32,8 +33,10 @@
 <div class="card">
   <h1>Gold-Portfolio</h1>
 
+  <div id="debug" class="debug">Debug: …</div>
+
   <label for="ounces">Anzahl Unzen (troy oz)</label>
-  <input id="ounces" inputmode="decimal" placeholder="z. B. 1, 7 oder 12,5" />
+  <input id="ounces" inputmode="decimal" placeholder="z. B. 1, 7 oder 12,5" value="1" />
 
   <button id="refresh">Aktualisieren</button>
   <div id="error" class="err"></div>
@@ -41,7 +44,7 @@
   <div class="out" id="output" style="display:none;">
     <div class="row"><div>Unzen</div><div><strong id="ozUsed">–</strong></div></div>
     <div class="row"><div>Goldpreis (Primär)</div><div><strong id="pPrimary">–</strong> <span class="tag">XAUEUR</span></div></div>
-    <div class="row"><div>Goldpreis (Check)</div><div><strong id="pCheck">–</strong></div></div>
+    <div class="row"><div>Goldpreis (Check)</div><div><strong id="pCheck">–</strong> <span class="tag">XAUUSD+ECB</span></div></div>
     <div class="row"><div>Portfolio-Wert</div><div><strong id="portfolio">–</strong></div></div>
     <div class="row"><div class="muted">Stand</div><div class="muted" id="asOf">–</div></div>
   </div>
@@ -52,64 +55,217 @@
     <button class="tab" data-days="365">365 Tage</button>
   </div>
 
-  <canvas id="chart" width="800" height="300"></canvas>
+  <canvas id="chart" width="900" height="320"></canvas>
   <div class="muted" id="chartHint">Bereit.</div>
 </div>
 
 <script>
 (() => {
-  const $ = id => document.getElementById(id);
+  // ✅ Fix für GitHub Pages: erzwinge trailing slash, sonst brechen relative Pfade
+  if (!location.pathname.endsWith("/")) {
+    location.replace(location.origin + location.pathname + "/" + location.search + location.hash);
+    return;
+  }
 
+  const $ = id => document.getElementById(id);
   const btn = $("refresh"), err = $("error"), out = $("output");
   const ozUsedEl = $("ozUsed"), pPrimaryEl = $("pPrimary"),
         pCheckEl = $("pCheck"), portfolioEl = $("portfolio"),
         asOfEl = $("asOf");
-
   const canvas = $("chart"), ctx = canvas.getContext("2d");
   const chartHint = $("chartHint");
+  const debugEl = $("debug");
 
-  let historyCache = null, selectedDays = 30;
+  let historyCache = null;
+  let selectedDays = 30;
+
+  function parseNumber(v){
+    if(!v) return null;
+    const n = Number(String(v).replace(",", "."));
+    return Number.isFinite(n) ? n : null;
+  }
 
   const fmtEUR = n => new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR"}).format(n);
 
-  async function fetchPrice(){
-    const u = new URL("data/price.json", location.href);
+  function cacheBustedUrl(path){
+    const base = location.href; // ends with /
+    const u = new URL(path, base);
     u.searchParams.set("v", Date.now());
-    return fetch(u,{cache:"no-store"}).then(r=>r.json());
+    return u.toString();
+  }
+
+  async function fetchJson(path){
+    const url = cacheBustedUrl(path);
+    debugEl.textContent = `Debug:\nPage: ${location.href}\nFetch: ${url}\n…`;
+    const r = await fetch(url, { cache:"no-store" });
+    debugEl.textContent = `Debug:\nPage: ${location.href}\nFetch: ${url}\nHTTP: ${r.status}`;
+    if(!r.ok) throw new Error(`${path} nicht erreichbar (${r.status})`);
+    return r.json();
+  }
+
+  async function fetchText(path){
+    const url = cacheBustedUrl(path);
+    const r = await fetch(url, { cache:"no-store" });
+    if(!r.ok) throw new Error(`${path} nicht erreichbar (${r.status})`);
+    return r.text();
+  }
+
+  function drawEmpty(msg){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = "#666";
+    ctx.font = "14px system-ui";
+    ctx.fillText(msg, 16, 32);
   }
 
   async function fetchHistory(){
-    const u = new URL("data/history.jsonl", location.href);
-    u.searchParams.set("v", Date.now());
-    const t = await fetch(u,{cache:"no-store"}).then(r=>r.text());
-    return t.trim().split("\n").map(l=>JSON.parse(l)).map(x=>({
+    const text = await fetchText("data/history.jsonl");
+    const lines = text.trim().split("\n").filter(Boolean);
+    return lines.map(l => JSON.parse(l)).map(x => ({
       t: Date.parse(x.asOf),
-      p: x.eurPerOz_primary,
-      c: x.eurPerOz_check
-    }));
+      p: Number(x.eurPerOz_primary),
+      c: Number(x.eurPerOz_check)
+    })).filter(x => Number.isFinite(x.t) && Number.isFinite(x.p));
   }
 
   function drawChart(points){
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    if(points.length<2){
-      ctx.fillText("Noch zu wenig Daten – warte ein paar Runs.",20,30);
+    if(!points || points.length < 2){
+      drawEmpty("Zu wenig Daten für Chart (warte 1–2 Runs).");
       return;
     }
-    const now=Date.now(), from=now-selectedDays*864e5;
-    const f=points.filter(x=>x.t>=from);
-    const xs=f.map(x=>x.t), ys=f.map(x=>x.p);
-    const minX=Math.min(...xs), maxX=Math.max(...xs);
-    const minY=Math.min(...ys), maxY=Math.max(...ys);
-    const pad=30;
-    const X=x=>pad+(x-minX)*(canvas.width-2*pad)/(maxX-minX);
-    const Y=y=>canvas.height-pad-(y-minY)*(canvas.height-2*pad)/(maxY-minY||1);
+
+    const now = Date.now();
+    const from = now - selectedDays * 864e5;
+    const f = points.filter(x => x.t >= from);
+
+    if(f.length < 2){
+      drawEmpty(`Keine Daten in den letzten ${selectedDays} Tagen.`);
+      return;
+    }
+
+    const pad = 36;
+    const W = canvas.width, H = canvas.height;
+
+    const xs = f.map(x => x.t);
+    const ys1 = f.map(x => x.p);
+    const ys2 = f.map(x => x.c).filter(Number.isFinite);
+
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys1, ...(ys2.length ? ys2 : [Infinity]));
+    const maxY = Math.max(...ys1, ...(ys2.length ? ys2 : [-Infinity]));
+
+    const X = x => pad + (x - minX) * (W - 2*pad) / (maxX - minX || 1);
+    const Y = y => H - pad - (y - minY) * (H - 2*pad) / (maxY - minY || 1);
+
+    ctx.clearRect(0,0,W,H);
+
+    ctx.strokeStyle = "#ddd";
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    f.forEach((p,i)=>{i?ctx.lineTo(X(p.t),Y(p.p)):ctx.moveTo(X(p.t),Y(p.p))});
-    ctx.strokeStyle="#111";ctx.lineWidth=2;ctx.stroke();
+    ctx.moveTo(pad, pad);
+    ctx.lineTo(pad, H-pad);
+    ctx.lineTo(W-pad, H-pad);
+    ctx.stroke();
+
+    ctx.strokeStyle = "#111";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    f.forEach((pt,i)=>{
+      const x = X(pt.t), y = Y(pt.p);
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+
+    const hasCheck = f.some(pt => Number.isFinite(pt.c));
+    if(hasCheck){
+      ctx.strokeStyle = "#888";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6,4]);
+      ctx.beginPath();
+      let started = false;
+      f.forEach((pt)=>{
+        if(!Number.isFinite(pt.c)) return;
+        const x = X(pt.t), y = Y(pt.c);
+        if(!started){ ctx.moveTo(x,y); started = true; }
+        else ctx.lineTo(x,y);
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    ctx.fillStyle = "#666";
+    ctx.font = "12px system-ui";
+    ctx.fillText(`min: ${minY.toFixed(2)} €`, pad, 18);
+    ctx.fillText(`max: ${maxY.toFixed(2)} €`, pad + 150, 18);
+    ctx.fillText(`${selectedDays} Tage`, W - pad - 70, 18);
   }
 
-  async function refresh(){
-    err.textContent="";
-    btn.disabled=true;
+  async function refreshPrices(){
+    const data = await fetchJson("data/price.json");
+    const primary = data.primary?.eurPerOz;
+    const check = data.check?.eurPerOz;
+
+    if(!Number.isFinite(primary)) throw new Error("Primärpreis ungültig");
+
+    const oz = parseNumber($("ounces").value);
+
+    pPrimaryEl.textContent = `${fmtEUR(primary)} / oz`;
+    pCheckEl.textContent = Number.isFinite(check) ? `${fmtEUR(check)} / oz` : "–";
+    asOfEl.textContent = data.asOf || "–";
+
+    if(oz && oz > 0){
+      ozUsedEl.textContent = String(oz).replace(".", ",");
+      portfolioEl.textContent = fmtEUR(primary * oz);
+    } else {
+      ozUsedEl.textContent = "–";
+      portfolioEl.textContent = "–";
+    }
+
+    out.style.display = "block";
+  }
+
+  async function refreshAll(){
+    err.textContent = "";
+    btn.disabled = true;
+    btn.textContent = "Lade…";
+    chartHint.textContent = "Lade Daten…";
+
     try{
-      const d=await fetchPri
+      await refreshPrices();
+
+      try{
+        historyCache = await fetchHistory();
+        drawChart(historyCache);
+        chartHint.textContent = `Chart ok (${historyCache.length} Punkte).`;
+      }catch(e){
+        drawEmpty("History fehlt (noch) oder nicht erreichbar.");
+        chartHint.textContent = "Chart: " + (e.message || "Fehler");
+      }
+
+    }catch(e){
+      err.textContent = "Fehler:\n" + (e.message || "unbekannt");
+      out.style.display = "none";
+      drawEmpty("Fehler beim Laden.");
+      chartHint.textContent = "Fehler.";
+    }finally{
+      btn.disabled = false;
+      btn.textContent = "Aktualisieren";
+    }
+  }
+
+  btn.addEventListener("click", refreshAll);
+
+  document.querySelectorAll(".tab").forEach(t => {
+    t.addEventListener("click", () => {
+      document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+      t.classList.add("active");
+      selectedDays = Number(t.dataset.days);
+      drawChart(historyCache || []);
+    });
+  });
+
+  drawEmpty("Lade…");
+  refreshAll();
+})();
+</script>
+</body>
+</html>
