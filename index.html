@@ -10,8 +10,8 @@
 
   <style>
     body{font-family:-apple-system,system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:24px;background:#f7f7f7}
-    .card{background:#fff;border:1px solid #e5e5e5;border-radius:14px;padding:16px;max-width:720px;box-shadow:0 2px 10px rgba(0,0,0,.04)}
-    h1{font-size:20px;margin:0 0 12px}
+    .card{background:#fff;border:1px solid #e5e5e5;border-radius:14px;padding:16px;max-width:860px;box-shadow:0 2px 10px rgba(0,0,0,.04)}
+    h1{font-size:22px;margin:0 0 12px}
     label{display:block;font-size:13px;margin-top:12px}
     input{width:100%;padding:12px;font-size:16px;border:1px solid #d8d8d8;border-radius:10px}
     button{margin-top:14px;width:100%;padding:12px;font-size:16px;border:0;border-radius:10px;background:#111;color:#fff;cursor:pointer}
@@ -25,6 +25,15 @@
     .tab{border:1px solid #ddd;background:#fafafa;border-radius:999px;padding:8px 12px;cursor:pointer}
     .tab.active{background:#111;color:#fff;border-color:#111}
     canvas{width:100%;height:260px;border:1px solid #eee;border-radius:12px;margin-top:8px;background:#fff}
+
+    .up{color:#0b7a0b;font-weight:700}
+    .down{color:#b00020;font-weight:700}
+
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{border-bottom:1px solid #eee;padding:8px;font-size:14px}
+    th{font-size:12px;color:#555;text-align:left}
+    .right{text-align:right}
+
     .debug{margin-top:10px;padding:10px;border:1px dashed #bbb;border-radius:10px;background:#fafafa;font-size:12px;white-space:pre-wrap}
   </style>
 </head>
@@ -33,20 +42,46 @@
 <div class="card">
   <h1>Gold-Portfolio</h1>
 
-  <div id="debug" class="debug">Debug: …</div>
+  <div id="debug" class="debug">Debug …</div>
 
   <label for="ounces">Anzahl Unzen (troy oz)</label>
-  <input id="ounces" inputmode="decimal" placeholder="z. B. 1, 7 oder 12,5" value="1" />
+  <input id="ounces" inputmode="decimal" value="1" />
 
   <button id="refresh">Aktualisieren</button>
   <div id="error" class="err"></div>
 
   <div class="out" id="output" style="display:none;">
     <div class="row"><div>Unzen</div><div><strong id="ozUsed">–</strong></div></div>
-    <div class="row"><div>Goldpreis (Primär)</div><div><strong id="pPrimary">–</strong> <span class="tag">XAUEUR</span></div></div>
-    <div class="row"><div>Goldpreis (Check)</div><div><strong id="pCheck">–</strong> <span class="tag">XAUUSD+ECB</span></div></div>
-    <div class="row"><div>Portfolio-Wert</div><div><strong id="portfolio">–</strong></div></div>
-    <div class="row"><div class="muted">Stand</div><div class="muted" id="asOf">–</div></div>
+
+    <div class="row">
+      <div>Goldpreis (Primär)</div>
+      <div><strong id="pPrimary">–</strong> <span class="tag">XAUEUR</span></div>
+    </div>
+
+    <div class="row">
+      <div>Goldpreis (Check)</div>
+      <div><strong id="pCheck">–</strong> <span class="tag">XAUUSD+ECB</span></div>
+    </div>
+
+    <div class="row">
+      <div>Abweichung</div>
+      <div><span id="diffAbs">–</span> <small id="diffPct"></small></div>
+    </div>
+
+    <div class="row">
+      <div>Trend (vs letzter Punkt)</div>
+      <div><span id="trendAbs">–</span> <small id="trendPct"></small></div>
+    </div>
+
+    <div class="row">
+      <div>Portfolio-Wert</div>
+      <div><strong id="portfolio">–</strong></div>
+    </div>
+
+    <div class="row">
+      <div class="muted">Stand</div>
+      <div class="muted" id="asOf">–</div>
+    </div>
   </div>
 
   <div class="tabs">
@@ -57,214 +92,186 @@
 
   <canvas id="chart" width="900" height="320"></canvas>
   <div class="muted" id="chartHint">Bereit.</div>
+
+  <h1 style="font-size:18px;margin-top:18px">Kaufhistorie</h1>
+
+  <label>Kaufdatum</label>
+  <input id="buyDate" type="date" />
+
+  <label>Menge (oz)</label>
+  <input id="buyOz" />
+
+  <label>Kaufpreis (€/oz)</label>
+  <input id="buyPrice" />
+
+  <button id="addBuy">Kauf hinzufügen</button>
+
+  <table id="buysTable" style="display:none">
+    <thead>
+      <tr>
+        <th>Datum</th>
+        <th class="right">oz</th>
+        <th class="right">Kaufpreis</th>
+        <th class="right">Kosten</th>
+        <th class="right">Wert heute</th>
+        <th class="right">P/L</th>
+      </tr>
+    </thead>
+    <tbody id="buysBody"></tbody>
+  </table>
+
+  <div class="muted" id="buysHint">Noch keine Käufe.</div>
 </div>
 
 <script>
 (() => {
-  // ✅ Fix für GitHub Pages: erzwinge trailing slash, sonst brechen relative Pfade
-  if (!location.pathname.endsWith("/")) {
-    location.replace(location.origin + location.pathname + "/" + location.search + location.hash);
+  /* GitHub Pages Fix */
+  if(!location.pathname.endsWith("/")){
+    location.replace(location.origin + location.pathname + "/");
     return;
   }
 
   const $ = id => document.getElementById(id);
-  const btn = $("refresh"), err = $("error"), out = $("output");
-  const ozUsedEl = $("ozUsed"), pPrimaryEl = $("pPrimary"),
-        pCheckEl = $("pCheck"), portfolioEl = $("portfolio"),
-        asOfEl = $("asOf");
-  const canvas = $("chart"), ctx = canvas.getContext("2d");
-  const chartHint = $("chartHint");
-  const debugEl = $("debug");
-
-  let historyCache = null;
-  let selectedDays = 30;
-
-  function parseNumber(v){
-    if(!v) return null;
-    const n = Number(String(v).replace(",", "."));
-    return Number.isFinite(n) ? n : null;
-  }
-
   const fmtEUR = n => new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR"}).format(n);
+  const num = v => Number(String(v).replace(",", "."));
 
-  function cacheBustedUrl(path){
-    const base = location.href; // ends with /
-    const u = new URL(path, base);
+  let history = [];
+  let lastPrimary = null;
+  let days = 30;
+
+  async function fetchJSON(p){
+    const u = new URL(p, location.href);
     u.searchParams.set("v", Date.now());
-    return u.toString();
-  }
-
-  async function fetchJson(path){
-    const url = cacheBustedUrl(path);
-    debugEl.textContent = `Debug:\nPage: ${location.href}\nFetch: ${url}\n…`;
-    const r = await fetch(url, { cache:"no-store" });
-    debugEl.textContent = `Debug:\nPage: ${location.href}\nFetch: ${url}\nHTTP: ${r.status}`;
-    if(!r.ok) throw new Error(`${path} nicht erreichbar (${r.status})`);
+    $("debug").textContent = "Fetch: " + u;
+    const r = await fetch(u,{cache:"no-store"});
+    $("debug").textContent += "\nHTTP: " + r.status;
+    if(!r.ok) throw new Error("Fetch fehlgeschlagen");
     return r.json();
   }
 
-  async function fetchText(path){
-    const url = cacheBustedUrl(path);
-    const r = await fetch(url, { cache:"no-store" });
-    if(!r.ok) throw new Error(`${path} nicht erreichbar (${r.status})`);
-    return r.text();
-  }
-
-  function drawEmpty(msg){
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    ctx.fillStyle = "#666";
-    ctx.font = "14px system-ui";
-    ctx.fillText(msg, 16, 32);
-  }
-
   async function fetchHistory(){
-    const text = await fetchText("data/history.jsonl");
-    const lines = text.trim().split("\n").filter(Boolean);
-    return lines.map(l => JSON.parse(l)).map(x => ({
+    const r = await fetchJSON("data/history.jsonl");
+    return r.trim().split("\n").map(l=>JSON.parse(l)).map(x=>({
       t: Date.parse(x.asOf),
-      p: Number(x.eurPerOz_primary),
-      c: Number(x.eurPerOz_check)
-    })).filter(x => Number.isFinite(x.t) && Number.isFinite(x.p));
+      p: x.eurPerOz_primary,
+      c: x.eurPerOz_check
+    }));
   }
 
-  function drawChart(points){
-    if(!points || points.length < 2){
-      drawEmpty("Zu wenig Daten für Chart (warte 1–2 Runs).");
+  function drawChart(){
+    const c = $("chart"), ctx = c.getContext("2d");
+    ctx.clearRect(0,0,c.width,c.height);
+
+    if(history.length < 2){
+      ctx.fillText("Zu wenig Daten für Chart.",20,30);
       return;
     }
 
-    const now = Date.now();
-    const from = now - selectedDays * 864e5;
-    const f = points.filter(x => x.t >= from);
-
-    if(f.length < 2){
-      drawEmpty(`Keine Daten in den letzten ${selectedDays} Tagen.`);
+    const from = Date.now() - days*864e5;
+    const pts = history.filter(x=>x.t>=from);
+    if(pts.length < 2){
+      ctx.fillText("Keine Daten im Zeitraum.",20,30);
       return;
     }
 
-    const pad = 36;
-    const W = canvas.width, H = canvas.height;
+    const xs = pts.map(p=>p.t), ys = pts.map(p=>p.p);
+    const minX=Math.min(...xs), maxX=Math.max(...xs);
+    const minY=Math.min(...ys), maxY=Math.max(...ys);
 
-    const xs = f.map(x => x.t);
-    const ys1 = f.map(x => x.p);
-    const ys2 = f.map(x => x.c).filter(Number.isFinite);
+    const X = x => 40+(x-minX)*(c.width-80)/(maxX-minX||1);
+    const Y = y => c.height-40-(y-minY)*(c.height-80)/(maxY-minY||1);
 
-    const minX = Math.min(...xs), maxX = Math.max(...xs);
-    const minY = Math.min(...ys1, ...(ys2.length ? ys2 : [Infinity]));
-    const maxY = Math.max(...ys1, ...(ys2.length ? ys2 : [-Infinity]));
-
-    const X = x => pad + (x - minX) * (W - 2*pad) / (maxX - minX || 1);
-    const Y = y => H - pad - (y - minY) * (H - 2*pad) / (maxY - minY || 1);
-
-    ctx.clearRect(0,0,W,H);
-
-    ctx.strokeStyle = "#ddd";
-    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(pad, pad);
-    ctx.lineTo(pad, H-pad);
-    ctx.lineTo(W-pad, H-pad);
-    ctx.stroke();
+    pts.forEach((p,i)=>{ i?ctx.lineTo(X(p.t),Y(p.p)):ctx.moveTo(X(p.t),Y(p.p))});
+    ctx.strokeStyle="#111";ctx.lineWidth=2;ctx.stroke();
+  }
 
-    ctx.strokeStyle = "#111";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    f.forEach((pt,i)=>{
-      const x = X(pt.t), y = Y(pt.p);
-      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  function setDelta(elA, elP, cur, prev){
+    if(prev===null){ elA.textContent="–"; elP.textContent=""; return;}
+    const d = cur-prev, pct = d/prev*100;
+    elA.textContent = (d>=0?"↑ ":"↓ ") + fmtEUR(Math.abs(d));
+    elA.className = d>=0?"up":"down";
+    elP.textContent = `(${pct>=0?"+":"-"}${Math.abs(pct).toFixed(2)}%)`;
+  }
+
+  function loadBuys(){ return JSON.parse(localStorage.getItem("buys")||"[]"); }
+  function saveBuys(b){ localStorage.setItem("buys",JSON.stringify(b)); }
+
+  function renderBuys(price){
+    const buys = loadBuys();
+    const body = $("buysBody");
+    if(!buys.length){ $("buysTable").style.display="none"; $("buysHint").style.display="block"; return;}
+    $("buysHint").style.display="none";
+    $("buysTable").style.display="table";
+    body.innerHTML="";
+    buys.forEach(b=>{
+      const cost=b.oz*b.price, val=b.oz*price, pl=val-cost;
+      body.innerHTML += `
+        <tr>
+          <td>${b.date}</td>
+          <td class="right">${b.oz}</td>
+          <td class="right">${fmtEUR(b.price)}</td>
+          <td class="right">${fmtEUR(cost)}</td>
+          <td class="right">${fmtEUR(val)}</td>
+          <td class="right ${pl>=0?"up":"down"}">${pl>=0?"+":"-"}${fmtEUR(Math.abs(pl))}</td>
+        </tr>`;
     });
-    ctx.stroke();
-
-    const hasCheck = f.some(pt => Number.isFinite(pt.c));
-    if(hasCheck){
-      ctx.strokeStyle = "#888";
-      ctx.lineWidth = 2;
-      ctx.setLineDash([6,4]);
-      ctx.beginPath();
-      let started = false;
-      f.forEach((pt)=>{
-        if(!Number.isFinite(pt.c)) return;
-        const x = X(pt.t), y = Y(pt.c);
-        if(!started){ ctx.moveTo(x,y); started = true; }
-        else ctx.lineTo(x,y);
-      });
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-
-    ctx.fillStyle = "#666";
-    ctx.font = "12px system-ui";
-    ctx.fillText(`min: ${minY.toFixed(2)} €`, pad, 18);
-    ctx.fillText(`max: ${maxY.toFixed(2)} €`, pad + 150, 18);
-    ctx.fillText(`${selectedDays} Tage`, W - pad - 70, 18);
   }
 
-  async function refreshPrices(){
-    const data = await fetchJson("data/price.json");
-    const primary = data.primary?.eurPerOz;
-    const check = data.check?.eurPerOz;
-
-    if(!Number.isFinite(primary)) throw new Error("Primärpreis ungültig");
-
-    const oz = parseNumber($("ounces").value);
-
-    pPrimaryEl.textContent = `${fmtEUR(primary)} / oz`;
-    pCheckEl.textContent = Number.isFinite(check) ? `${fmtEUR(check)} / oz` : "–";
-    asOfEl.textContent = data.asOf || "–";
-
-    if(oz && oz > 0){
-      ozUsedEl.textContent = String(oz).replace(".", ",");
-      portfolioEl.textContent = fmtEUR(primary * oz);
-    } else {
-      ozUsedEl.textContent = "–";
-      portfolioEl.textContent = "–";
-    }
-
-    out.style.display = "block";
-  }
-
-  async function refreshAll(){
-    err.textContent = "";
-    btn.disabled = true;
-    btn.textContent = "Lade…";
-    chartHint.textContent = "Lade Daten…";
-
+  async function refresh(){
+    $("error").textContent="";
     try{
-      await refreshPrices();
+      const d = await fetchJSON("data/price.json");
+      const p = d.primary.eurPerOz;
+      const c = d.check.eurPerOz;
+      const oz = num($("ounces").value)||0;
 
-      try{
-        historyCache = await fetchHistory();
-        drawChart(historyCache);
-        chartHint.textContent = `Chart ok (${historyCache.length} Punkte).`;
-      }catch(e){
-        drawEmpty("History fehlt (noch) oder nicht erreichbar.");
-        chartHint.textContent = "Chart: " + (e.message || "Fehler");
-      }
+      $("ozUsed").textContent=oz;
+      $("pPrimary").textContent=fmtEUR(p)+"/oz";
+      $("pCheck").textContent=fmtEUR(c)+"/oz";
+      $("portfolio").textContent=fmtEUR(p*oz);
+      $("asOf").textContent=d.asOf;
+
+      setDelta($("diffAbs"),$("diffPct"),p,c);
+      setDelta($("trendAbs"),$("trendPct"),p,lastPrimary);
+      lastPrimary=p;
+
+      $("output").style.display="block";
+
+      history = await fetchHistory();
+      drawChart();
+      $("chartHint").textContent=`${history.length} Punkte`;
+
+      renderBuys(p);
 
     }catch(e){
-      err.textContent = "Fehler:\n" + (e.message || "unbekannt");
-      out.style.display = "none";
-      drawEmpty("Fehler beim Laden.");
-      chartHint.textContent = "Fehler.";
-    }finally{
-      btn.disabled = false;
-      btn.textContent = "Aktualisieren";
+      $("error").textContent=e.message;
     }
   }
 
-  btn.addEventListener("click", refreshAll);
+  $("refresh").onclick=refresh;
 
-  document.querySelectorAll(".tab").forEach(t => {
-    t.addEventListener("click", () => {
-      document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+  document.querySelectorAll(".tab").forEach(t=>{
+    t.onclick=()=>{
+      document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
       t.classList.add("active");
-      selectedDays = Number(t.dataset.days);
-      drawChart(historyCache || []);
-    });
+      days=+t.dataset.days;
+      drawChart();
+    };
   });
 
-  drawEmpty("Lade…");
-  refreshAll();
+  $("addBuy").onclick=()=>{
+    const b={date:$("buyDate").value,oz:num($("buyOz").value),price:num($("buyPrice").value)};
+    if(!b.date||!b.oz||!b.price){ $("error").textContent="Kaufdaten unvollständig"; return;}
+    const arr=loadBuys(); arr.push(b); saveBuys(arr); refresh();
+  };
+
+  /* PWA / Offline */
+  if("serviceWorker" in navigator){
+    navigator.serviceWorker.register("./service-worker.js").catch(()=>{});
+  }
+
+  refresh();
 })();
 </script>
 </body>
