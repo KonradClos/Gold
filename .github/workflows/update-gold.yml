@@ -21,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch gold prices + update price & history (robust)
+      - name: Fetch gold prices + update price & history (robust + seed)
         shell: bash
         run: |
           set -euo pipefail
@@ -64,7 +64,7 @@ jobs:
               okey = next(iter(obs))
               return float(obs[okey][0])
 
-          # --- load last stored price if exists ---
+          # load last stored price if exists (fallback when Stooq is empty)
           last_price = None
           if os.path.exists("data/price.json"):
               with open("data/price.json", encoding="utf-8") as f:
@@ -81,10 +81,10 @@ jobs:
               stooq_time = xaueur["time"]
           elif last_price:
               print("⚠️ Stooq empty – using last stored price")
-              eur_primary = last_price["primary"]["eurPerOz"]
-              eur_check = last_price["check"]["eurPerOz"]
-              stooq_date = last_price["primary"]["stooqDate"]
-              stooq_time = last_price["primary"]["stooqTime"]
+              eur_primary = float(last_price["primary"]["eurPerOz"])
+              eur_check = float(last_price["check"]["eurPerOz"])
+              stooq_date = last_price["primary"].get("stooqDate","")
+              stooq_time = last_price["primary"].get("stooqTime","")
           else:
               sys.exit("No Stooq data and no previous price.json available")
 
@@ -108,17 +108,47 @@ jobs:
               }
           }
 
+          # write latest snapshot
           with open("data/price.json", "w", encoding="utf-8") as f:
               json.dump(price, f, ensure_ascii=False, indent=2)
 
-          # --- append history ---
-          with open("data/history.jsonl", "a+", encoding="utf-8") as f:
-              f.write(json.dumps({
-                  "asOf": asof,
-                  "eurPerOz_primary": eur_primary,
-                  "eurPerOz_check": eur_check,
-                  "usdPerEur": usd_per_eur
-              }, ensure_ascii=False) + "\n")
+          # append history point
+          history_path = "data/history.jsonl"
+          point = {
+              "asOf": asof,
+              "eurPerOz_primary": eur_primary,
+              "eurPerOz_check": eur_check,
+              "usdPerEur": usd_per_eur
+          }
+
+          with open(history_path, "a+", encoding="utf-8") as f:
+              f.write(json.dumps(point, ensure_ascii=False) + "\n")
+
+          # ---- SEED HISTORY (only if file has < 2 lines) ----
+          try:
+              with open(history_path, "r", encoding="utf-8") as f:
+                  lines = [ln for ln in f.read().splitlines() if ln.strip()]
+          except FileNotFoundError:
+              lines = []
+
+          if len(lines) < 2:
+              print("🌱 Seeding history.jsonl with a few backfilled points (first-time setup)…")
+              base = point.copy()
+              base_dt = datetime.datetime.fromisoformat(base["asOf"].replace("Z",""))
+
+              seed_points = []
+              # create 7 extra points (yesterday..7 days ago)
+              for i in range(1, 8):
+                  dt = base_dt - datetime.timedelta(days=i)
+                  p = base.copy()
+                  p["asOf"] = dt.replace(microsecond=0).isoformat() + "Z"
+                  seed_points.append(p)
+
+              # rewrite file with: older points first, then current point last
+              all_points = list(reversed(seed_points)) + [point]
+              with open(history_path, "w", encoding="utf-8") as f:
+                  for p in all_points:
+                      f.write(json.dumps(p, ensure_ascii=False) + "\n")
           EOF
 
       - name: Commit & push
@@ -135,5 +165,5 @@ jobs:
             exit 0
           fi
 
-          git commit -m "Update gold price + history (robust)"
+          git commit -m "Update gold price + history (seeded)"
           git push
