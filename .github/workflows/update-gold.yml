@@ -21,89 +21,67 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch gold prices and write JSON
+      - name: Fetch gold prices and write JSON + history
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p data
 
-          # Fetch Stooq CSVs into data/ (clearer + avoids clutter)
-          curl -fLsS "https://stooq.com/q/l/?s=xaueur&f=sd2t2ohlc&h=&e=csv" -o data/xaueur.csv
-          curl -fLsS "https://stooq.com/q/l/?s=xauusd&f=sd2t2ohlc&h=&e=csv" -o data/xauusd.csv
+          # Fetch Stooq prices
+          curl -fLsS "https://stooq.com/q/l/?s=xaueur&f=sd2t2ohlc&e=csv" -o data/xaueur.csv
+          curl -fLsS "https://stooq.com/q/l/?s=xauusd&f=sd2t2ohlc&e=csv" -o data/xauusd.csv
 
-          # ECB: USD per EUR (D.USD.EUR.SP00.A)
+          # Fetch ECB USD per EUR
           curl -fLsS \
             -H "Accept: application/json" \
             -A "Mozilla/5.0 (GitHub Actions)" \
             "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?lastNObservations=1&format=sdmx-json" \
             -o data/ecb.json
 
-          test -s data/ecb.json || (echo "ECB response empty"; exit 1)
-
           python3 - << 'EOF'
-          import csv, json, datetime, sys
-          from pathlib import Path
+          import csv, json, datetime, os, sys
 
-          def read_stooq_latest(path: str):
-              p = Path(path)
-              with p.open(newline="", encoding="utf-8") as f:
-                  r = csv.DictReader(f)
-                  rows = list(r)
-
+          def read_latest_csv(path):
+              with open(path, newline="", encoding="utf-8") as f:
+                  rows = list(csv.DictReader(f))
               if not rows:
-                  raise SystemExit(f"Empty CSV: {path}")
-
-              row = rows[-1]  # latest row
-              # Stooq fields here usually: Date,Close (plus maybe Open/High/Low depending on f=...)
-              date = row.get("Date") or row.get("date")
-              close = row.get("Close") or row.get("close")
-
-              if date is None or close is None:
-                  raise SystemExit(f"Unexpected columns in {path}: {list(row.keys())}")
-
-              # Sometimes Time exists, sometimes not
-              t = row.get("Time") or row.get("time") or ""
-
+                  sys.exit(f"CSV empty: {path}")
+              r = rows[-1]
               return {
-                  "date": date,
-                  "time": t,
-                  "close": float(str(close).strip()),
+                  "date": r.get("Date"),
+                  "time": r.get("Time",""),
+                  "close": float(r["Close"])
               }
 
-          def read_ecb_usd_per_eur(path: str) -> float:
+          def read_ecb_usd_per_eur(path):
               with open(path, encoding="utf-8") as f:
                   ecb = json.load(f)
+              series = ecb["dataSets"][0]["series"]
+              k = next(iter(series))
+              obs = series[k]["observations"]
+              ok = next(iter(obs))
+              return float(obs[ok][0])
 
-              # SDMX-JSON typical structure:
-              # dataSets[0].series[<key>].observations[<obsKey>] = [value, ...]
-              try:
-                  series_dict = ecb["dataSets"][0]["series"]
-                  series_key = next(iter(series_dict))
-                  obs_dict = series_dict[series_key]["observations"]
-                  obs_key = next(iter(obs_dict))
-                  value = obs_dict[obs_key][0]
-                  return float(value)
-              except Exception as e:
-                  raise SystemExit(f"Failed to parse ECB SDMX-JSON: {e}")
-
-          xaueur = read_stooq_latest("data/xaueur.csv")
-          xauusd = read_stooq_latest("data/xauusd.csv")
+          xaueur = read_latest_csv("data/xaueur.csv")
+          xauusd = read_latest_csv("data/xauusd.csv")
           usd_per_eur = read_ecb_usd_per_eur("data/ecb.json")
 
-          eur_per_oz_primary = xaueur["close"]
-          eur_per_oz_check = xauusd["close"] / usd_per_eur
+          eur_primary = xaueur["close"]
+          eur_check = xauusd["close"] / usd_per_eur
+
+          asof = datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
           out = {
-              "asOf": datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+              "asOf": asof,
               "primary": {
                   "source": "stooq-xaueur",
-                  "eurPerOz": eur_per_oz_primary,
+                  "eurPerOz": eur_primary,
                   "stooqDate": xaueur["date"],
                   "stooqTime": xaueur["time"]
               },
               "check": {
                   "source": "stooq-xauusd + ecb-usd-per-eur",
-                  "eurPerOz": eur_per_oz_check,
+                  "eurPerOz": eur_check,
                   "usdPerEur": usd_per_eur,
                   "xauusdUsdPerOz": xauusd["close"],
                   "stooqDate": xauusd["date"],
@@ -113,6 +91,15 @@ jobs:
 
           with open("data/price.json", "w", encoding="utf-8") as f:
               json.dump(out, f, ensure_ascii=False, indent=2)
+
+          # Append history (JSON Lines)
+          with open("data/history.jsonl", "a", encoding="utf-8") as f:
+              f.write(json.dumps({
+                  "asOf": asof,
+                  "eurPerOz_primary": eur_primary,
+                  "eurPerOz_check": eur_check,
+                  "usdPerEur": usd_per_eur
+              }, ensure_ascii=False) + "\n")
           EOF
 
       - name: Commit & push
@@ -122,11 +109,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add data/price.json
+          git add data/price.json data/history.jsonl
           if git diff --cached --quiet; then
             echo "No changes."
             exit 0
           fi
 
-          git commit -m "Update gold price data"
+          git commit -m "Update gold price + history"
           git push
