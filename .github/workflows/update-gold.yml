@@ -21,17 +21,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch gold prices and write JSON + history
+      - name: Fetch gold prices + write price.json and history.jsonl
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p data
 
-          # Fetch Stooq prices
+          echo "Fetching Stooq prices…"
           curl -fLsS "https://stooq.com/q/l/?s=xaueur&f=sd2t2ohlc&e=csv" -o data/xaueur.csv
           curl -fLsS "https://stooq.com/q/l/?s=xauusd&f=sd2t2ohlc&e=csv" -o data/xauusd.csv
 
-          # Fetch ECB USD per EUR
+          echo "Fetching ECB USD/EUR…"
           curl -fLsS \
             -H "Accept: application/json" \
             -A "Mozilla/5.0 (GitHub Actions)" \
@@ -39,7 +39,7 @@ jobs:
             -o data/ecb.json
 
           python3 - << 'EOF'
-          import csv, json, datetime, os, sys
+          import csv, json, datetime, sys
 
           def read_latest_csv(path):
               with open(path, newline="", encoding="utf-8") as f:
@@ -57,10 +57,10 @@ jobs:
               with open(path, encoding="utf-8") as f:
                   ecb = json.load(f)
               series = ecb["dataSets"][0]["series"]
-              k = next(iter(series))
-              obs = series[k]["observations"]
-              ok = next(iter(obs))
-              return float(obs[ok][0])
+              skey = next(iter(series))
+              obs = series[skey]["observations"]
+              okey = next(iter(obs))
+              return float(obs[okey][0])
 
           xaueur = read_latest_csv("data/xaueur.csv")
           xauusd = read_latest_csv("data/xauusd.csv")
@@ -71,7 +71,7 @@ jobs:
 
           asof = datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
-          out = {
+          price = {
               "asOf": asof,
               "primary": {
                   "source": "stooq-xaueur",
@@ -90,16 +90,18 @@ jobs:
           }
 
           with open("data/price.json", "w", encoding="utf-8") as f:
-              json.dump(out, f, ensure_ascii=False, indent=2)
+              json.dump(price, f, ensure_ascii=False, indent=2)
 
-          # Append history (JSON Lines)
-          with open("data/history.jsonl", "a", encoding="utf-8") as f:
-              f.write(json.dumps({
-                  "asOf": asof,
-                  "eurPerOz_primary": eur_primary,
-                  "eurPerOz_check": eur_check,
-                  "usdPerEur": usd_per_eur
-              }, ensure_ascii=False) + "\n")
+          # --- history (JSON Lines, robust) ---
+          history_line = json.dumps({
+              "asOf": asof,
+              "eurPerOz_primary": eur_primary,
+              "eurPerOz_check": eur_check,
+              "usdPerEur": usd_per_eur
+          }, ensure_ascii=False)
+
+          with open("data/history.jsonl", "a+", encoding="utf-8") as f:
+              f.write(history_line + "\n")
           EOF
 
       - name: Commit & push
@@ -110,8 +112,9 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add data/price.json data/history.jsonl
+
           if git diff --cached --quiet; then
-            echo "No changes."
+            echo "No changes to commit."
             exit 0
           fi
 
