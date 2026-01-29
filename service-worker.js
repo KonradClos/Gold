@@ -28,7 +28,7 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  // Network-first for latest data
+  // Network-first für aktuelle Daten
   if (url.pathname.endsWith("/data/price.json") || url.pathname.endsWith("/data/history.jsonl")) {
     event.respondWith(
       fetch(event.request).then((r) => {
@@ -40,7 +40,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Cache-first for static assets
+  // Cache-first für alles andere
   event.respondWith(
     caches.match(event.request).then(hit => hit || fetch(event.request))
   );
