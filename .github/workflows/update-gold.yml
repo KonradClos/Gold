@@ -21,15 +21,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch gold prices + write price.json and history.jsonl
+      - name: Fetch gold prices + update price & history (robust)
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p data
 
-          echo "Fetching Stooq prices…"
-          curl -fLsS "https://stooq.com/q/l/?s=xaueur&f=sd2t2ohlc&e=csv" -o data/xaueur.csv
-          curl -fLsS "https://stooq.com/q/l/?s=xauusd&f=sd2t2ohlc&e=csv" -o data/xauusd.csv
+          echo "Fetching Stooq CSVs (may be empty, handled gracefully)…"
+          curl -fLsS "https://stooq.com/q/l/?s=xaueur&f=sd2t2ohlc&e=csv" -o data/xaueur.csv || true
+          curl -fLsS "https://stooq.com/q/l/?s=xauusd&f=sd2t2ohlc&e=csv" -o data/xauusd.csv || true
 
           echo "Fetching ECB USD/EUR…"
           curl -fLsS \
@@ -39,13 +39,15 @@ jobs:
             -o data/ecb.json
 
           python3 - << 'EOF'
-          import csv, json, datetime, sys
+          import csv, json, datetime, os, sys
 
           def read_latest_csv(path):
+              if not os.path.exists(path) or os.path.getsize(path) == 0:
+                  return None
               with open(path, newline="", encoding="utf-8") as f:
                   rows = list(csv.DictReader(f))
               if not rows:
-                  sys.exit(f"CSV empty: {path}")
+                  return None
               r = rows[-1]
               return {
                   "date": r.get("Date"),
@@ -62,12 +64,29 @@ jobs:
               okey = next(iter(obs))
               return float(obs[okey][0])
 
+          # --- load last stored price if exists ---
+          last_price = None
+          if os.path.exists("data/price.json"):
+              with open("data/price.json", encoding="utf-8") as f:
+                  last_price = json.load(f)
+
           xaueur = read_latest_csv("data/xaueur.csv")
           xauusd = read_latest_csv("data/xauusd.csv")
           usd_per_eur = read_ecb_usd_per_eur("data/ecb.json")
 
-          eur_primary = xaueur["close"]
-          eur_check = xauusd["close"] / usd_per_eur
+          if xaueur and xauusd:
+              eur_primary = xaueur["close"]
+              eur_check = xauusd["close"] / usd_per_eur
+              stooq_date = xaueur["date"]
+              stooq_time = xaueur["time"]
+          elif last_price:
+              print("⚠️ Stooq empty – using last stored price")
+              eur_primary = last_price["primary"]["eurPerOz"]
+              eur_check = last_price["check"]["eurPerOz"]
+              stooq_date = last_price["primary"]["stooqDate"]
+              stooq_time = last_price["primary"]["stooqTime"]
+          else:
+              sys.exit("No Stooq data and no previous price.json available")
 
           asof = datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
@@ -76,32 +95,30 @@ jobs:
               "primary": {
                   "source": "stooq-xaueur",
                   "eurPerOz": eur_primary,
-                  "stooqDate": xaueur["date"],
-                  "stooqTime": xaueur["time"]
+                  "stooqDate": stooq_date,
+                  "stooqTime": stooq_time
               },
               "check": {
                   "source": "stooq-xauusd + ecb-usd-per-eur",
                   "eurPerOz": eur_check,
                   "usdPerEur": usd_per_eur,
-                  "xauusdUsdPerOz": xauusd["close"],
-                  "stooqDate": xauusd["date"],
-                  "stooqTime": xauusd["time"]
+                  "xauusdUsdPerOz": eur_check * usd_per_eur,
+                  "stooqDate": stooq_date,
+                  "stooqTime": stooq_time
               }
           }
 
           with open("data/price.json", "w", encoding="utf-8") as f:
               json.dump(price, f, ensure_ascii=False, indent=2)
 
-          # --- history (JSON Lines, robust) ---
-          history_line = json.dumps({
-              "asOf": asof,
-              "eurPerOz_primary": eur_primary,
-              "eurPerOz_check": eur_check,
-              "usdPerEur": usd_per_eur
-          }, ensure_ascii=False)
-
+          # --- append history ---
           with open("data/history.jsonl", "a+", encoding="utf-8") as f:
-              f.write(history_line + "\n")
+              f.write(json.dumps({
+                  "asOf": asof,
+                  "eurPerOz_primary": eur_primary,
+                  "eurPerOz_check": eur_check,
+                  "usdPerEur": usd_per_eur
+              }, ensure_ascii=False) + "\n")
           EOF
 
       - name: Commit & push
@@ -118,5 +135,5 @@ jobs:
             exit 0
           fi
 
-          git commit -m "Update gold price + history"
+          git commit -m "Update gold price + history (robust)"
           git push
