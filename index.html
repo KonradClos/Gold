@@ -12,10 +12,10 @@
     body{font-family:-apple-system,system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:24px;background:#f7f7f7}
     .card{background:#fff;border:1px solid #e5e5e5;border-radius:14px;padding:16px;max-width:860px;box-shadow:0 2px 10px rgba(0,0,0,.04)}
     h1{font-size:22px;margin:0 0 12px}
-    label{display:block;font-size:13px;margin-top:12px}
-    input{width:100%;padding:12px;font-size:16px;border:1px solid #d8d8d8;border-radius:10px}
+    label{display:block;font-size:13px;margin-top:12px;color:#222}
+    input{width:100%;padding:12px;font-size:16px;border:1px solid #d8d8d8;border-radius:10px;background:#fff}
     button{margin-top:14px;width:100%;padding:12px;font-size:16px;border:0;border-radius:10px;background:#111;color:#fff;cursor:pointer}
-    button:disabled{opacity:.6}
+    button:disabled{opacity:.6;cursor:not-allowed}
     .row{display:flex;justify-content:space-between;gap:12px;padding:6px 0;align-items:center}
     .out{margin-top:14px;padding:12px;background:#eef7ff;border:1px solid #cfe7ff;border-radius:10px}
     .muted{color:#666;font-size:12px;margin-top:10px}
@@ -26,14 +26,21 @@
     .tab.active{background:#111;color:#fff;border-color:#111}
     canvas{width:100%;height:260px;border:1px solid #eee;border-radius:12px;margin-top:8px;background:#fff}
 
-    .up{color:#0b7a0b;font-weight:700}
-    .down{color:#b00020;font-weight:700}
+    .kpi{display:flex;gap:10px;align-items:baseline;justify-content:flex-end}
+    .delta{font-weight:800}
+    .up{color:#0b7a0b}
+    .down{color:#b00020}
+
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    @media (max-width:820px){ .grid2{grid-template-columns:1fr} }
 
     table{width:100%;border-collapse:collapse;margin-top:12px}
-    th,td{border-bottom:1px solid #eee;padding:8px;font-size:14px}
+    th,td{border-bottom:1px solid #eee;padding:10px 6px;font-size:14px}
     th{font-size:12px;color:#555;text-align:left}
     .right{text-align:right}
-
+    .btnRow{display:flex;gap:10px;margin-top:10px;flex-wrap:wrap}
+    .btnSmall{width:auto;padding:10px 12px;border-radius:10px;margin-top:0}
+    .btnGhost{background:#fff;color:#111;border:1px solid #ddd}
     .debug{margin-top:10px;padding:10px;border:1px dashed #bbb;border-radius:10px;background:#fafafa;font-size:12px;white-space:pre-wrap}
   </style>
 </head>
@@ -42,10 +49,18 @@
 <div class="card">
   <h1>Gold-Portfolio</h1>
 
-  <div id="debug" class="debug">Debug …</div>
+  <div id="debug" class="debug">Debug: …</div>
 
-  <label for="ounces">Anzahl Unzen (troy oz)</label>
-  <input id="ounces" inputmode="decimal" value="1" />
+  <div class="grid2">
+    <div>
+      <label for="ounces">Anzahl Unzen (troy oz)</label>
+      <input id="ounces" inputmode="decimal" placeholder="z. B. 7 oder 12,5" value="1" />
+    </div>
+    <div>
+      <label for="currency">Anzeige</label>
+      <input id="currency" value="EUR / oz" disabled />
+    </div>
+  </div>
 
   <button id="refresh">Aktualisieren</button>
   <div id="error" class="err"></div>
@@ -55,22 +70,28 @@
 
     <div class="row">
       <div>Goldpreis (Primär)</div>
-      <div><strong id="pPrimary">–</strong> <span class="tag">XAUEUR</span></div>
+      <div class="kpi"><strong id="pPrimary">–</strong> <span class="tag">XAUEUR</span></div>
     </div>
 
     <div class="row">
       <div>Goldpreis (Check)</div>
-      <div><strong id="pCheck">–</strong> <span class="tag">XAUUSD+ECB</span></div>
+      <div class="kpi"><strong id="pCheck">–</strong> <span class="tag">XAUUSD+ECB</span></div>
     </div>
 
     <div class="row">
-      <div>Abweichung</div>
-      <div><span id="diffAbs">–</span> <small id="diffPct"></small></div>
+      <div>Abweichung (Primär vs Check)</div>
+      <div class="kpi">
+        <span class="delta" id="diffAbs">–</span>
+        <small id="diffPct">–</small>
+      </div>
     </div>
 
     <div class="row">
       <div>Trend (vs letzter Punkt)</div>
-      <div><span id="trendAbs">–</span> <small id="trendPct"></small></div>
+      <div class="kpi">
+        <span class="delta" id="trendAbs">–</span>
+        <small id="trendPct">–</small>
+      </div>
     </div>
 
     <div class="row">
@@ -95,18 +116,33 @@
 
   <h1 style="font-size:18px;margin-top:18px">Kaufhistorie</h1>
 
-  <label>Kaufdatum</label>
-  <input id="buyDate" type="date" />
+  <div class="grid2">
+    <div>
+      <label for="buyDate">Kaufdatum</label>
+      <input id="buyDate" type="date" />
+    </div>
+    <div>
+      <label for="buyOz">Menge (oz)</label>
+      <input id="buyOz" inputmode="decimal" placeholder="z. B. 2,5" />
+    </div>
+    <div>
+      <label for="buyPrice">Kaufpreis (EUR pro oz)</label>
+      <input id="buyPrice" inputmode="decimal" placeholder="z. B. 3850,00" />
+    </div>
+    <div>
+      <label>&nbsp;</label>
+      <button id="addBuy" class="btnSmall">Kauf hinzufügen</button>
+    </div>
+  </div>
 
-  <label>Menge (oz)</label>
-  <input id="buyOz" />
+  <div class="btnRow">
+    <button id="exportBuys" class="btnSmall">Käufe exportieren (JSON)</button>
+    <button id="importBuys" class="btnSmall btnGhost">Käufe importieren (JSON)</button>
+    <button id="clearBuys" class="btnSmall btnGhost">Alle Käufe löschen</button>
+    <input id="importFile" type="file" accept="application/json" style="display:none" />
+  </div>
 
-  <label>Kaufpreis (€/oz)</label>
-  <input id="buyPrice" />
-
-  <button id="addBuy">Kauf hinzufügen</button>
-
-  <table id="buysTable" style="display:none">
+  <table id="buysTable" style="display:none;">
     <thead>
       <tr>
         <th>Datum</th>
@@ -115,177 +151,452 @@
         <th class="right">Kosten</th>
         <th class="right">Wert heute</th>
         <th class="right">P/L</th>
+        <th class="right">Aktion</th>
       </tr>
     </thead>
     <tbody id="buysBody"></tbody>
+    <tfoot>
+      <tr>
+        <th>Summe</th>
+        <th class="right" id="sumOz">–</th>
+        <th></th>
+        <th class="right" id="sumCost">–</th>
+        <th class="right" id="sumValue">–</th>
+        <th class="right" id="sumPL">–</th>
+        <th></th>
+      </tr>
+    </tfoot>
   </table>
 
-  <div class="muted" id="buysHint">Noch keine Käufe.</div>
+  <div class="muted" id="buysHint">Noch keine Käufe gespeichert. (Wird lokal auf diesem Gerät gespeichert.)</div>
+
+  <div class="muted" style="margin-top:14px">
+    Hinweis: Käufe werden lokal im Browser (localStorage) gespeichert. Andere Geräte sehen dein Portfolio nicht.
+    Wenn du “Website-Daten” löschst, sind die Käufe weg – nutze Export/Import als Backup.
+  </div>
 </div>
 
 <script>
 (() => {
-  /* GitHub Pages Fix */
-  if(!location.pathname.endsWith("/")){
-    location.replace(location.origin + location.pathname + "/");
+  // GitHub Pages: trailing slash erzwingen (sonst brechen relative Pfade)
+  if (!location.pathname.endsWith("/")) {
+    location.replace(location.origin + location.pathname + "/" + location.search + location.hash);
     return;
   }
 
   const $ = id => document.getElementById(id);
-  const fmtEUR = n => new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR"}).format(n);
-  const num = v => Number(String(v).replace(",", "."));
 
-  let history = [];
+  const btn = $("refresh");
+  const err = $("error");
+  const out = $("output");
+
+  const ozUsedEl = $("ozUsed");
+  const pPrimaryEl = $("pPrimary");
+  const pCheckEl = $("pCheck");
+  const portfolioEl = $("portfolio");
+  const asOfEl = $("asOf");
+  const diffAbsEl = $("diffAbs");
+  const diffPctEl = $("diffPct");
+  const trendAbsEl = $("trendAbs");
+  const trendPctEl = $("trendPct");
+
+  const canvas = $("chart");
+  const ctx = canvas.getContext("2d");
+  const chartHint = $("chartHint");
+  const debugEl = $("debug");
+
+  let historyCache = null;
+  let selectedDays = 30;
   let lastPrimary = null;
-  let days = 30;
 
-  async function fetchJSON(p){
-    const u = new URL(p, location.href);
+  const BUYS_KEY = "gold_buys_v1";
+
+  function fmtEUR(n){
+    return new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR"}).format(n);
+  }
+  function fmtNum(n, digits=3){
+    return new Intl.NumberFormat("de-DE",{maximumFractionDigits:digits}).format(n);
+  }
+  function parseNumber(v){
+    if(!v) return null;
+    const n = Number(String(v).replace(",", "."));
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function resetDebug(){
+    debugEl.textContent = `Page: ${location.href}`;
+  }
+  function appendDebug(line){
+    debugEl.textContent += "\n" + line;
+  }
+
+  function cacheBustedUrl(path){
+    const u = new URL(path, location.href);
     u.searchParams.set("v", Date.now());
-    $("debug").textContent = "Fetch: " + u;
-    const r = await fetch(u,{cache:"no-store"});
-    $("debug").textContent += "\nHTTP: " + r.status;
-    if(!r.ok) throw new Error("Fetch fehlgeschlagen");
+    return u.toString();
+  }
+
+  async function fetchJson(path, label){
+    const url = cacheBustedUrl(path);
+    const r = await fetch(url, { cache:"no-store" });
+    appendDebug(`${label}: ${r.status} (${path})`);
+    if(!r.ok) throw new Error(`${path} nicht erreichbar (${r.status})`);
     return r.json();
   }
 
   async function fetchHistory(){
-  const url = new URL("data/history.jsonl", location.href);
-  url.searchParams.set("v", Date.now());
+    const url = cacheBustedUrl("data/history.jsonl");
+    const r = await fetch(url, { cache:"no-store" });
+    appendDebug(`history: ${r.status} (data/history.jsonl)`);
+    if(!r.ok) throw new Error(`history.jsonl nicht erreichbar (${r.status})`);
 
-  const r = await fetch(url, { cache: "no-store" });
-  if (!r.ok) throw new Error("history.jsonl nicht erreichbar");
+    const text = await r.text();
+    const points = text.trim().split("\n").filter(Boolean)
+      .map(line => JSON.parse(line))
+      .map(x => ({
+        t: Date.parse(x.asOf),
+        p: Number(x.eurPerOz_primary),
+        c: Number(x.eurPerOz_check)
+      }))
+      .filter(x => Number.isFinite(x.t) && Number.isFinite(x.p));
 
-  const text = await r.text();
+    appendDebug(`history points: ${points.length}`);
+    return points;
+  }
 
-  return text
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map(line => JSON.parse(line))
-    .map(x => ({
-      t: Date.parse(x.asOf),
-      p: Number(x.eurPerOz_primary),
-      c: Number(x.eurPerOz_check)
-    }))
-    .filter(x => Number.isFinite(x.t) && Number.isFinite(x.p));
-}
+  function drawEmpty(msg){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = "#666";
+    ctx.font = "14px system-ui";
+    ctx.fillText(msg, 16, 32);
+  }
 
+  function drawChart(points){
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0,0,W,H);
 
-  function drawChart(){
-    const c = $("chart"), ctx = c.getContext("2d");
-    ctx.clearRect(0,0,c.width,c.height);
-
-    if(history.length < 2){
-      ctx.fillText("Zu wenig Daten für Chart.",20,30);
+    if(!points || points.length < 2){
+      drawEmpty("Zu wenig Daten für Chart (warte 1–2 Runs).");
       return;
     }
 
-    const from = Date.now() - days*864e5;
-    const pts = history.filter(x=>x.t>=from);
-    if(pts.length < 2){
-      ctx.fillText("Keine Daten im Zeitraum.",20,30);
+    const now = Date.now();
+    const from = now - selectedDays * 864e5;
+    const f = points.filter(x => x.t >= from);
+
+    if(f.length < 2){
+      drawEmpty(`Keine Daten in den letzten ${selectedDays} Tagen.`);
       return;
     }
 
-    const xs = pts.map(p=>p.t), ys = pts.map(p=>p.p);
-    const minX=Math.min(...xs), maxX=Math.max(...xs);
-    const minY=Math.min(...ys), maxY=Math.max(...ys);
+    const pad = 40;
 
-    const X = x => 40+(x-minX)*(c.width-80)/(maxX-minX||1);
-    const Y = y => c.height-40-(y-minY)*(c.height-80)/(maxY-minY||1);
+    const xs = f.map(x => x.t);
+    const ys1 = f.map(x => x.p);
+    const ys2 = f.map(x => x.c).filter(Number.isFinite);
 
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys1, ...(ys2.length ? ys2 : [Infinity]));
+    const maxY = Math.max(...ys1, ...(ys2.length ? ys2 : [-Infinity]));
+
+    const X = x => pad + (x - minX) * (W - 2*pad) / (maxX - minX || 1);
+    const Y = y => H - pad - (y - minY) * (H - 2*pad) / (maxY - minY || 1);
+
+    // axes
+    ctx.strokeStyle = "#ddd";
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    pts.forEach((p,i)=>{ i?ctx.lineTo(X(p.t),Y(p.p)):ctx.moveTo(X(p.t),Y(p.p))});
-    ctx.strokeStyle="#111";ctx.lineWidth=2;ctx.stroke();
-  }
+    ctx.moveTo(pad, pad);
+    ctx.lineTo(pad, H-pad);
+    ctx.lineTo(W-pad, H-pad);
+    ctx.stroke();
 
-  function setDelta(elA, elP, cur, prev){
-    if(prev===null){ elA.textContent="–"; elP.textContent=""; return;}
-    const d = cur-prev, pct = d/prev*100;
-    elA.textContent = (d>=0?"↑ ":"↓ ") + fmtEUR(Math.abs(d));
-    elA.className = d>=0?"up":"down";
-    elP.textContent = `(${pct>=0?"+":"-"}${Math.abs(pct).toFixed(2)}%)`;
-  }
-
-  function loadBuys(){ return JSON.parse(localStorage.getItem("buys")||"[]"); }
-  function saveBuys(b){ localStorage.setItem("buys",JSON.stringify(b)); }
-
-  function renderBuys(price){
-    const buys = loadBuys();
-    const body = $("buysBody");
-    if(!buys.length){ $("buysTable").style.display="none"; $("buysHint").style.display="block"; return;}
-    $("buysHint").style.display="none";
-    $("buysTable").style.display="table";
-    body.innerHTML="";
-    buys.forEach(b=>{
-      const cost=b.oz*b.price, val=b.oz*price, pl=val-cost;
-      body.innerHTML += `
-        <tr>
-          <td>${b.date}</td>
-          <td class="right">${b.oz}</td>
-          <td class="right">${fmtEUR(b.price)}</td>
-          <td class="right">${fmtEUR(cost)}</td>
-          <td class="right">${fmtEUR(val)}</td>
-          <td class="right ${pl>=0?"up":"down"}">${pl>=0?"+":"-"}${fmtEUR(Math.abs(pl))}</td>
-        </tr>`;
+    // primary line
+    ctx.strokeStyle = "#111";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    f.forEach((pt,i)=>{
+      const x = X(pt.t), y = Y(pt.p);
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
     });
+    ctx.stroke();
+
+    // check line dashed
+    const hasCheck = f.some(pt => Number.isFinite(pt.c));
+    if(hasCheck){
+      ctx.strokeStyle = "#888";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6,4]);
+      ctx.beginPath();
+      let started = false;
+      f.forEach((pt)=>{
+        if(!Number.isFinite(pt.c)) return;
+        const x = X(pt.t), y = Y(pt.c);
+        if(!started){ ctx.moveTo(x,y); started = true; }
+        else ctx.lineTo(x,y);
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // labels & legend
+    ctx.fillStyle = "#666";
+    ctx.font = "12px system-ui";
+
+    const minTxt = `min: ${minY.toFixed(2)} €`;
+    const maxTxt = `max: ${maxY.toFixed(2)} €`;
+    ctx.fillText(minTxt, pad, 18);
+    ctx.fillText(maxTxt, pad + 160, 18);
+
+    const daysTxt = `${selectedDays} Tage`;
+    ctx.fillText(daysTxt, W - pad - ctx.measureText(daysTxt).width, 18);
+
+    const start = new Date(minX).toISOString().slice(0,10);
+    const end = new Date(maxX).toISOString().slice(0,10);
+    ctx.fillText(start, pad, H - 10);
+    ctx.fillText(end, W - pad - ctx.measureText(end).width, H - 10);
+
+    ctx.fillText("Primär (—)", pad, 34);
+    ctx.fillText("Check (--)", pad + 110, 34);
   }
 
-  async function refresh(){
-    $("error").textContent="";
+  function setDelta(elAbs, elPct, current, previous){
+    if(!Number.isFinite(current) || !Number.isFinite(previous)){
+      elAbs.textContent = "–";
+      elPct.textContent = "–";
+      elAbs.className = "delta";
+      return;
+    }
+    const diff = current - previous;
+    const pct = previous !== 0 ? (diff / previous) * 100 : 0;
+
+    elAbs.textContent = `${diff >= 0 ? "↑" : "↓"} ${fmtEUR(Math.abs(diff))}`;
+    elPct.textContent = `(${diff >= 0 ? "+" : "-"}${Math.abs(pct).toFixed(2)} %)`;
+
+    elAbs.className = "delta " + (diff >= 0 ? "up" : "down");
+  }
+
+  function loadBuys(){
+    try{ return JSON.parse(localStorage.getItem(BUYS_KEY) || "[]"); }
+    catch{ return []; }
+  }
+  function saveBuys(buys){
+    localStorage.setItem(BUYS_KEY, JSON.stringify(buys));
+  }
+
+  function renderBuys(currentPrimary){
+    const buys = loadBuys();
+    const table = $("buysTable");
+    const body = $("buysBody");
+    const hint = $("buysHint");
+
+    if(!buys.length){
+      table.style.display = "none";
+      hint.textContent = "Noch keine Käufe gespeichert. (Wird lokal auf diesem Gerät gespeichert.)";
+      return;
+    }
+
+    table.style.display = "table";
+    hint.textContent = "";
+    body.innerHTML = "";
+
+    let sumOz = 0, sumCost = 0, sumValue = 0;
+
+    buys.forEach((b, idx) => {
+      const oz = Number(b.oz);
+      const buyPrice = Number(b.price);
+      const cost = oz * buyPrice;
+      const value = Number.isFinite(currentPrimary) ? oz * currentPrimary : 0;
+      const pl = value - cost;
+
+      sumOz += oz;
+      sumCost += cost;
+      sumValue += value;
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${b.date || "–"}</td>
+        <td class="right">${fmtNum(oz, 3)}</td>
+        <td class="right">${fmtEUR(buyPrice)}</td>
+        <td class="right">${fmtEUR(cost)}</td>
+        <td class="right">${Number.isFinite(currentPrimary) ? fmtEUR(value) : "–"}</td>
+        <td class="right"><span class="${pl>=0 ? "up" : "down"}">${pl>=0 ? "+" : "-"}${fmtEUR(Math.abs(pl))}</span></td>
+        <td class="right"><button class="btnSmall btnGhost" data-del="${idx}">Löschen</button></td>
+      `;
+      body.appendChild(tr);
+    });
+
+    const sumPL = sumValue - sumCost;
+    $("sumOz").textContent = fmtNum(sumOz, 3);
+    $("sumCost").textContent = fmtEUR(sumCost);
+    $("sumValue").textContent = fmtEUR(sumValue);
+    $("sumPL").innerHTML = `<span class="${sumPL>=0 ? "up" : "down"}">${sumPL>=0 ? "+" : "-"}${fmtEUR(Math.abs(sumPL))}</span>`;
+  }
+
+  async function refreshAll(){
+    err.textContent = "";
+    btn.disabled = true;
+    btn.textContent = "Lade…";
+    chartHint.textContent = "Lade Daten…";
+    resetDebug();
+
     try{
-      const d = await fetchJSON("data/price.json");
-      const p = d.primary.eurPerOz;
-      const c = d.check.eurPerOz;
-      const oz = num($("ounces").value)||0;
+      // price.json
+      const data = await fetchJson("data/price.json", "price");
+      const primary = data.primary?.eurPerOz;
+      const check = data.check?.eurPerOz;
 
-      $("ozUsed").textContent=oz;
-      $("pPrimary").textContent=fmtEUR(p)+"/oz";
-      $("pCheck").textContent=fmtEUR(c)+"/oz";
-      $("portfolio").textContent=fmtEUR(p*oz);
-      $("asOf").textContent=d.asOf;
+      if(!Number.isFinite(primary)) throw new Error("Primärpreis ungültig");
 
-      setDelta($("diffAbs"),$("diffPct"),p,c);
-      setDelta($("trendAbs"),$("trendPct"),p,lastPrimary);
-      lastPrimary=p;
+      const oz = parseNumber($("ounces").value);
 
-      $("output").style.display="block";
+      pPrimaryEl.textContent = `${fmtEUR(primary)} / oz`;
+      pCheckEl.textContent = Number.isFinite(check) ? `${fmtEUR(check)} / oz` : "–";
+      asOfEl.textContent = data.asOf || "–";
 
-      history = await fetchHistory();
-      drawChart();
-      $("chartHint").textContent=`${history.length} Punkte`;
+      // Abweichung
+      if(Number.isFinite(check)){
+        setDelta(diffAbsEl, diffPctEl, primary, check);
+      } else {
+        diffAbsEl.textContent = "–";
+        diffPctEl.textContent = "–";
+      }
 
-      renderBuys(p);
+      // Trend vs letzter Punkt
+      setDelta(trendAbsEl, trendPctEl, primary, lastPrimary);
+      lastPrimary = primary;
+
+      // Portfolio
+      if(oz && oz > 0){
+        ozUsedEl.textContent = fmtNum(oz, 3);
+        portfolioEl.textContent = fmtEUR(primary * oz);
+      } else {
+        ozUsedEl.textContent = "–";
+        portfolioEl.textContent = "–";
+      }
+
+      out.style.display = "block";
+
+      // history.jsonl + chart
+      try{
+        historyCache = await fetchHistory();
+        drawChart(historyCache);
+        chartHint.textContent = `Chart ok (${historyCache.length} Punkte).`;
+      }catch(e){
+        drawEmpty("History fehlt (noch) oder nicht erreichbar.");
+        chartHint.textContent = "Chart: " + (e.message || "Fehler");
+      }
+
+      // buys
+      renderBuys(primary);
 
     }catch(e){
-      $("error").textContent=e.message;
+      err.textContent = "Fehler:\n" + (e.message || "unbekannt");
+      out.style.display = "none";
+      drawEmpty("Fehler beim Laden.");
+      chartHint.textContent = "Fehler.";
+    }finally{
+      btn.disabled = false;
+      btn.textContent = "Aktualisieren";
     }
   }
 
-  $("refresh").onclick=refresh;
+  // Events
+  btn.addEventListener("click", refreshAll);
 
-  document.querySelectorAll(".tab").forEach(t=>{
-    t.onclick=()=>{
-      document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+  document.querySelectorAll(".tab").forEach(t => {
+    t.addEventListener("click", () => {
+      document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
       t.classList.add("active");
-      days=+t.dataset.days;
-      drawChart();
-    };
+      selectedDays = Number(t.dataset.days);
+      drawChart(historyCache || []);
+    });
   });
 
-  $("addBuy").onclick=()=>{
-    const b={date:$("buyDate").value,oz:num($("buyOz").value),price:num($("buyPrice").value)};
-    if(!b.date||!b.oz||!b.price){ $("error").textContent="Kaufdaten unvollständig"; return;}
-    const arr=loadBuys(); arr.push(b); saveBuys(arr); refresh();
-  };
+  // Delete single buy (event delegation)
+  $("buysTable").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-del]");
+    if(!b) return;
+    const idx = Number(b.dataset.del);
+    const buys = loadBuys();
+    buys.splice(idx, 1);
+    saveBuys(buys);
+    refreshAll();
+  });
 
-  /* PWA / Offline */
-  if("serviceWorker" in navigator){
+  // Add buy
+  $("addBuy").addEventListener("click", () => {
+    const date = $("buyDate").value;
+    const oz = parseNumber($("buyOz").value);
+    const price = parseNumber($("buyPrice").value);
+
+    if(!date || !oz || oz <= 0 || !price || price <= 0){
+      err.textContent = "Bitte Kaufdatum, Menge und Kaufpreis korrekt ausfüllen.";
+      return;
+    }
+
+    const buys = loadBuys();
+    buys.push({ date, oz, price });
+    buys.sort((a,b) => String(a.date).localeCompare(String(b.date)));
+    saveBuys(buys);
+
+    $("buyOz").value = "";
+    $("buyPrice").value = "";
+    err.textContent = "";
+    refreshAll();
+  });
+
+  // Clear all buys
+  $("clearBuys").addEventListener("click", () => {
+    localStorage.removeItem(BUYS_KEY);
+    refreshAll();
+  });
+
+  // Export buys
+  $("exportBuys").addEventListener("click", () => {
+    const buys = loadBuys();
+    const blob = new Blob([JSON.stringify(buys, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "gold-buys.json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  // Import buys
+  $("importBuys").addEventListener("click", () => $("importFile").click());
+  $("importFile").addEventListener("change", async (e) => {
+    const file = e.target.files?.[0];
+    if(!file) return;
+    try{
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if(!Array.isArray(data)) throw new Error("JSON muss ein Array sein");
+      // minimal validation
+      const cleaned = data
+        .map(x => ({ date: String(x.date||""), oz: Number(x.oz), price: Number(x.price) }))
+        .filter(x => x.date && Number.isFinite(x.oz) && x.oz>0 && Number.isFinite(x.price) && x.price>0);
+      saveBuys(cleaned);
+      err.textContent = "";
+      refreshAll();
+    }catch(ex){
+      err.textContent = "Import fehlgeschlagen: " + (ex.message || ex);
+    }finally{
+      e.target.value = "";
+    }
+  });
+
+  // PWA / Offline: Service Worker
+  if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./service-worker.js").catch(()=>{});
   }
 
-  refresh();
+  // Initial
+  drawEmpty("Lade…");
+  refreshAll();
 })();
 </script>
 </body>
