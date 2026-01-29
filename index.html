@@ -150,13 +150,27 @@
   }
 
   async function fetchHistory(){
-    const r = await fetchJSON("data/history.jsonl");
-    return r.trim().split("\n").map(l=>JSON.parse(l)).map(x=>({
+  const url = new URL("data/history.jsonl", location.href);
+  url.searchParams.set("v", Date.now());
+
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error("history.jsonl nicht erreichbar");
+
+  const text = await r.text();
+
+  return text
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map(line => JSON.parse(line))
+    .map(x => ({
       t: Date.parse(x.asOf),
-      p: x.eurPerOz_primary,
-      c: x.eurPerOz_check
-    }));
-  }
+      p: Number(x.eurPerOz_primary),
+      c: Number(x.eurPerOz_check)
+    }))
+    .filter(x => Number.isFinite(x.t) && Number.isFinite(x.p));
+}
+
 
   function drawChart(){
     const c = $("chart"), ctx = c.getContext("2d");
