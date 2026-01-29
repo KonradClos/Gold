@@ -9,39 +9,109 @@
   <meta name="theme-color" content="#111111">
 
   <style>
-    body{font-family:-apple-system,system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:24px;background:#f7f7f7}
-    .card{background:#fff;border:1px solid #e5e5e5;border-radius:14px;padding:16px;max-width:860px;box-shadow:0 2px 10px rgba(0,0,0,.04)}
-    h1{font-size:22px;margin:0 0 12px}
-    label{display:block;font-size:13px;margin-top:12px;color:#222}
-    input{width:100%;padding:12px;font-size:16px;border:1px solid #d8d8d8;border-radius:10px;background:#fff}
-    button{margin-top:14px;width:100%;padding:12px;font-size:16px;border:0;border-radius:10px;background:#111;color:#fff;cursor:pointer}
-    button:disabled{opacity:.6;cursor:not-allowed}
-    .row{display:flex;justify-content:space-between;gap:12px;padding:6px 0;align-items:center}
-    .out{margin-top:14px;padding:12px;background:#eef7ff;border:1px solid #cfe7ff;border-radius:10px}
-    .muted{color:#666;font-size:12px;margin-top:10px}
-    .err{color:#b00020;font-size:13px;margin-top:10px;white-space:pre-wrap}
-    .tag{font-size:12px;border:1px solid #ddd;border-radius:999px;padding:2px 8px;background:#fafafa}
-    .tabs{display:flex;gap:8px;margin-top:12px}
-    .tab{border:1px solid #ddd;background:#fafafa;border-radius:999px;padding:8px 12px;cursor:pointer}
-    .tab.active{background:#111;color:#fff;border-color:#111}
-    canvas{width:100%;height:260px;border:1px solid #eee;border-radius:12px;margin-top:8px;background:#fff}
+    :root{
+      --bg:#f7f7f7;
+      --card:#fff;
+      --border:#e5e5e5;
+      --muted:#666;
+      --ink:#111;
+      --soft:#eef7ff;
+      --softBorder:#cfe7ff;
+      --danger:#b00020;
+      --ok:#0b7a0b;
+      --radius:14px;
+    }
+    *{box-sizing:border-box}
+    body{font-family:-apple-system,system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:16px;background:var(--bg);color:#111}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;max-width:860px;margin:0 auto;box-shadow:0 2px 10px rgba(0,0,0,.04)}
+    h1{font-size:20px;margin:0 0 10px}
+    h2{font-size:16px;margin:18px 0 8px}
 
-    .kpi{display:flex;gap:10px;align-items:baseline;justify-content:flex-end}
-    .delta{font-weight:800}
-    .up{color:#0b7a0b}
-    .down{color:#b00020}
+    label{display:block;font-size:13px;margin-top:10px;color:#222}
+    input{
+      width:100%;
+      padding:12px;
+      font-size:16px;
+      border:1px solid #d8d8d8;
+      border-radius:12px;
+      background:#fff;
+    }
 
-    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    @media (max-width:820px){ .grid2{grid-template-columns:1fr} }
-
-    table{width:100%;border-collapse:collapse;margin-top:12px}
-    th,td{border-bottom:1px solid #eee;padding:10px 6px;font-size:14px}
-    th{font-size:12px;color:#555;text-align:left}
-    .right{text-align:right}
-    .btnRow{display:flex;gap:10px;margin-top:10px;flex-wrap:wrap}
-    .btnSmall{width:auto;padding:10px 12px;border-radius:10px;margin-top:0}
+    .btn{
+      margin-top:12px;
+      width:100%;
+      padding:12px;
+      font-size:16px;
+      border:0;
+      border-radius:12px;
+      background:var(--ink);
+      color:#fff;
+      cursor:pointer;
+      font-weight:700;
+    }
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+    .btnRow{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+    .btnSmall{
+      width:auto;
+      padding:10px 12px;
+      border-radius:12px;
+      margin-top:0;
+      font-size:14px;
+      font-weight:700;
+    }
     .btnGhost{background:#fff;color:#111;border:1px solid #ddd}
-    .debug{margin-top:10px;padding:10px;border:1px dashed #bbb;border-radius:10px;background:#fafafa;font-size:12px;white-space:pre-wrap}
+
+    .err{color:var(--danger);font-size:13px;margin-top:10px;white-space:pre-wrap}
+
+    .out{
+      margin-top:12px;
+      padding:12px;
+      background:var(--soft);
+      border:1px solid var(--softBorder);
+      border-radius:12px
+    }
+    .row{display:flex;justify-content:space-between;gap:12px;padding:6px 0;align-items:center}
+    .muted{color:var(--muted);font-size:12px;margin-top:10px}
+    .tag{font-size:12px;border:1px solid #ddd;border-radius:999px;padding:2px 8px;background:#fafafa;white-space:nowrap}
+
+    .kpi{display:flex;gap:10px;align-items:baseline;justify-content:flex-end;text-align:right}
+    .delta{font-weight:800}
+    .up{color:var(--ok);font-weight:800}
+    .down{color:var(--danger);font-weight:800}
+
+    .tabs{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+    .tab{border:1px solid #ddd;background:#fafafa;border-radius:999px;padding:8px 12px;cursor:pointer;font-size:14px}
+    .tab.active{background:#111;color:#fff;border-color:#111}
+
+    canvas{width:100%;height:240px;border:1px solid #eee;border-radius:12px;margin-top:8px;background:#fff}
+
+    /* Buys: mobile cards */
+    .buyCards{display:grid;gap:10px;margin-top:10px}
+    .buyCard{
+      border:1px solid #eee;
+      border-radius:12px;
+      padding:12px;
+      background:#fff;
+    }
+    .buyTop{display:flex;justify-content:space-between;gap:10px;align-items:center}
+    .pill{display:inline-block;padding:2px 10px;border-radius:999px;border:1px solid #ddd;background:#fafafa;font-size:12px}
+    .buyGrid{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:8px 12px;
+      margin-top:10px;
+    }
+    .kv{display:flex;flex-direction:column;gap:2px}
+    .kv small{color:var(--muted);font-size:12px}
+    .kv strong{font-size:15px}
+    .right{text-align:right}
+
+    /* Desktop enhancements */
+    @media (min-width: 900px){
+      body{margin:24px}
+      h1{font-size:22px}
+      canvas{height:280px}
+    }
   </style>
 </head>
 
@@ -49,20 +119,10 @@
 <div class="card">
   <h1>Gold-Portfolio</h1>
 
-  <div id="debug" class="debug">Debug: …</div>
+  <label for="ounces">Anzahl Unzen (troy oz)</label>
+  <input id="ounces" inputmode="decimal" placeholder="z. B. 7 oder 12,5" value="1" />
 
-  <div class="grid2">
-    <div>
-      <label for="ounces">Anzahl Unzen (troy oz)</label>
-      <input id="ounces" inputmode="decimal" placeholder="z. B. 7 oder 12,5" value="1" />
-    </div>
-    <div>
-      <label for="currency">Anzeige</label>
-      <input id="currency" value="EUR / oz" disabled />
-    </div>
-  </div>
-
-  <button id="refresh">Aktualisieren</button>
+  <button id="refresh" class="btn">Aktualisieren</button>
   <div id="error" class="err"></div>
 
   <div class="out" id="output" style="display:none;">
@@ -79,7 +139,7 @@
     </div>
 
     <div class="row">
-      <div>Abweichung (Primär vs Check)</div>
+      <div>Abweichung</div>
       <div class="kpi">
         <span class="delta" id="diffAbs">–</span>
         <small id="diffPct">–</small>
@@ -105,80 +165,51 @@
     </div>
   </div>
 
+  <h2>Goldpreis-Chart</h2>
   <div class="tabs">
     <button class="tab active" data-days="30">30 Tage</button>
     <button class="tab" data-days="90">90 Tage</button>
     <button class="tab" data-days="365">365 Tage</button>
   </div>
-
   <canvas id="chart" width="900" height="320"></canvas>
   <div class="muted" id="chartHint">Bereit.</div>
 
-  <h1 style="font-size:18px;margin-top:18px">Kaufhistorie</h1>
+  <h2>Portfolio-Entwicklung</h2>
+  <canvas id="portfolioChart" width="900" height="320"></canvas>
+  <div class="muted" id="portfolioHint">Zeigt Einstand (Kosten) vs. aktueller Wert anhand deiner Käufe.</div>
 
-  <div class="grid2">
-    <div>
-      <label for="buyDate">Kaufdatum</label>
-      <input id="buyDate" type="date" />
-    </div>
-    <div>
-      <label for="buyOz">Menge (oz)</label>
-      <input id="buyOz" inputmode="decimal" placeholder="z. B. 2,5" />
-    </div>
-    <div>
-      <label for="buyPrice">Kaufpreis (EUR pro oz)</label>
-      <input id="buyPrice" inputmode="decimal" placeholder="z. B. 3850,00" />
-    </div>
-    <div>
-      <label>&nbsp;</label>
-      <button id="addBuy" class="btnSmall">Kauf hinzufügen</button>
-    </div>
-  </div>
+  <h2>Kaufhistorie</h2>
+
+  <label for="buyDate">Kaufdatum</label>
+  <input id="buyDate" type="date" />
+
+  <label for="buyOz">Menge (oz)</label>
+  <input id="buyOz" inputmode="decimal" placeholder="z. B. 2,5" />
+
+  <label for="buyPrice">Kaufpreis (EUR pro oz)</label>
+  <input id="buyPrice" inputmode="decimal" placeholder="z. B. 3850,00" />
+
+  <button id="addBuy" class="btn">Kauf hinzufügen</button>
 
   <div class="btnRow">
-    <button id="exportBuys" class="btnSmall">Käufe exportieren (JSON)</button>
-    <button id="importBuys" class="btnSmall btnGhost">Käufe importieren (JSON)</button>
-    <button id="clearBuys" class="btnSmall btnGhost">Alle Käufe löschen</button>
+    <button id="exportBuys" class="btn btnSmall">Export (JSON)</button>
+    <button id="importBuys" class="btn btnSmall btnGhost">Import (JSON)</button>
+    <button id="clearBuys" class="btn btnSmall btnGhost">Alle löschen</button>
     <input id="importFile" type="file" accept="application/json" style="display:none" />
   </div>
 
-  <table id="buysTable" style="display:none;">
-    <thead>
-      <tr>
-        <th>Datum</th>
-        <th class="right">oz</th>
-        <th class="right">Kaufpreis</th>
-        <th class="right">Kosten</th>
-        <th class="right">Wert heute</th>
-        <th class="right">P/L</th>
-        <th class="right">Aktion</th>
-      </tr>
-    </thead>
-    <tbody id="buysBody"></tbody>
-    <tfoot>
-      <tr>
-        <th>Summe</th>
-        <th class="right" id="sumOz">–</th>
-        <th></th>
-        <th class="right" id="sumCost">–</th>
-        <th class="right" id="sumValue">–</th>
-        <th class="right" id="sumPL">–</th>
-        <th></th>
-      </tr>
-    </tfoot>
-  </table>
-
-  <div class="muted" id="buysHint">Noch keine Käufe gespeichert. (Wird lokal auf diesem Gerät gespeichert.)</div>
+  <div id="buyCards" class="buyCards"></div>
+  <div class="muted" id="buysHint">Noch keine Käufe gespeichert. (Nur lokal auf diesem Gerät)</div>
 
   <div class="muted" style="margin-top:14px">
-    Hinweis: Käufe werden lokal im Browser (localStorage) gespeichert. Andere Geräte sehen dein Portfolio nicht.
-    Wenn du “Website-Daten” löschst, sind die Käufe weg – nutze Export/Import als Backup.
+    Datenschutz: Käufe werden lokal im Browser gespeichert (localStorage). Andere Geräte sehen dein Portfolio nicht.
+    Wenn du “Website-Daten” löschst, sind Käufe weg – nutze Export/Import als Backup.
   </div>
 </div>
 
 <script>
 (() => {
-  // GitHub Pages: trailing slash erzwingen (sonst brechen relative Pfade)
+  // GitHub Pages: trailing slash erzwingen
   if (!location.pathname.endsWith("/")) {
     location.replace(location.origin + location.pathname + "/" + location.search + location.hash);
     return;
@@ -200,10 +231,16 @@
   const trendAbsEl = $("trendAbs");
   const trendPctEl = $("trendPct");
 
-  const canvas = $("chart");
-  const ctx = canvas.getContext("2d");
+  const chartCanvas = $("chart");
+  const chartCtx = chartCanvas.getContext("2d");
   const chartHint = $("chartHint");
-  const debugEl = $("debug");
+
+  const portCanvas = $("portfolioChart");
+  const portCtx = portCanvas.getContext("2d");
+  const portfolioHint = $("portfolioHint");
+
+  const buyCardsEl = $("buyCards");
+  const buysHintEl = $("buysHint");
 
   let historyCache = null;
   let selectedDays = 30;
@@ -222,36 +259,23 @@
     const n = Number(String(v).replace(",", "."));
     return Number.isFinite(n) ? n : null;
   }
-
-  function resetDebug(){
-    debugEl.textContent = `Page: ${location.href}`;
-  }
-  function appendDebug(line){
-    debugEl.textContent += "\n" + line;
-  }
-
   function cacheBustedUrl(path){
     const u = new URL(path, location.href);
     u.searchParams.set("v", Date.now());
     return u.toString();
   }
 
-  async function fetchJson(path, label){
-    const url = cacheBustedUrl(path);
-    const r = await fetch(url, { cache:"no-store" });
-    appendDebug(`${label}: ${r.status} (${path})`);
+  async function fetchJson(path){
+    const r = await fetch(cacheBustedUrl(path), { cache:"no-store" });
     if(!r.ok) throw new Error(`${path} nicht erreichbar (${r.status})`);
     return r.json();
   }
 
   async function fetchHistory(){
-    const url = cacheBustedUrl("data/history.jsonl");
-    const r = await fetch(url, { cache:"no-store" });
-    appendDebug(`history: ${r.status} (data/history.jsonl)`);
+    const r = await fetch(cacheBustedUrl("data/history.jsonl"), { cache:"no-store" });
     if(!r.ok) throw new Error(`history.jsonl nicht erreichbar (${r.status})`);
-
     const text = await r.text();
-    const points = text.trim().split("\n").filter(Boolean)
+    return text.trim().split("\n").filter(Boolean)
       .map(line => JSON.parse(line))
       .map(x => ({
         t: Date.parse(x.asOf),
@@ -259,24 +283,36 @@
         c: Number(x.eurPerOz_check)
       }))
       .filter(x => Number.isFinite(x.t) && Number.isFinite(x.p));
-
-    appendDebug(`history points: ${points.length}`);
-    return points;
   }
 
-  function drawEmpty(msg){
+  function setDelta(elAbs, elPct, current, previous){
+    if(!Number.isFinite(current) || !Number.isFinite(previous)){
+      elAbs.textContent = "–";
+      elPct.textContent = "–";
+      elAbs.className = "delta";
+      return;
+    }
+    const diff = current - previous;
+    const pct = previous !== 0 ? (diff / previous) * 100 : 0;
+
+    elAbs.textContent = `${diff >= 0 ? "↑" : "↓"} ${fmtEUR(Math.abs(diff))}`;
+    elPct.textContent = `(${diff >= 0 ? "+" : "-"}${Math.abs(pct).toFixed(2)} %)`;
+    elAbs.className = "delta " + (diff >= 0 ? "up" : "down");
+  }
+
+  function drawEmpty(ctx, canvas, msg){
     ctx.clearRect(0,0,canvas.width,canvas.height);
     ctx.fillStyle = "#666";
     ctx.font = "14px system-ui";
     ctx.fillText(msg, 16, 32);
   }
 
-  function drawChart(points){
-    const W = canvas.width, H = canvas.height;
-    ctx.clearRect(0,0,W,H);
+  function drawPriceChart(points){
+    const W = chartCanvas.width, H = chartCanvas.height;
+    chartCtx.clearRect(0,0,W,H);
 
     if(!points || points.length < 2){
-      drawEmpty("Zu wenig Daten für Chart (warte 1–2 Runs).");
+      drawEmpty(chartCtx, chartCanvas, "Zu wenig Daten für Chart (warte 1–2 Runs).");
       return;
     }
 
@@ -285,7 +321,7 @@
     const f = points.filter(x => x.t >= from);
 
     if(f.length < 2){
-      drawEmpty(`Keine Daten in den letzten ${selectedDays} Tagen.`);
+      drawEmpty(chartCtx, chartCanvas, `Keine Daten in den letzten ${selectedDays} Tagen.`);
       return;
     }
 
@@ -303,77 +339,61 @@
     const Y = y => H - pad - (y - minY) * (H - 2*pad) / (maxY - minY || 1);
 
     // axes
-    ctx.strokeStyle = "#ddd";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(pad, pad);
-    ctx.lineTo(pad, H-pad);
-    ctx.lineTo(W-pad, H-pad);
-    ctx.stroke();
+    chartCtx.strokeStyle = "#ddd";
+    chartCtx.lineWidth = 1;
+    chartCtx.beginPath();
+    chartCtx.moveTo(pad, pad);
+    chartCtx.lineTo(pad, H-pad);
+    chartCtx.lineTo(W-pad, H-pad);
+    chartCtx.stroke();
 
-    // primary line
-    ctx.strokeStyle = "#111";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
+    // primary
+    chartCtx.strokeStyle = "#111";
+    chartCtx.lineWidth = 2;
+    chartCtx.beginPath();
     f.forEach((pt,i)=>{
       const x = X(pt.t), y = Y(pt.p);
-      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      if(i===0) chartCtx.moveTo(x,y); else chartCtx.lineTo(x,y);
     });
-    ctx.stroke();
+    chartCtx.stroke();
 
-    // check line dashed
+    // check (dashed)
     const hasCheck = f.some(pt => Number.isFinite(pt.c));
     if(hasCheck){
-      ctx.strokeStyle = "#888";
-      ctx.lineWidth = 2;
-      ctx.setLineDash([6,4]);
-      ctx.beginPath();
+      chartCtx.strokeStyle = "#888";
+      chartCtx.lineWidth = 2;
+      chartCtx.setLineDash([6,4]);
+      chartCtx.beginPath();
       let started = false;
       f.forEach((pt)=>{
         if(!Number.isFinite(pt.c)) return;
         const x = X(pt.t), y = Y(pt.c);
-        if(!started){ ctx.moveTo(x,y); started = true; }
-        else ctx.lineTo(x,y);
+        if(!started){ chartCtx.moveTo(x,y); started = true; }
+        else chartCtx.lineTo(x,y);
       });
-      ctx.stroke();
-      ctx.setLineDash([]);
+      chartCtx.stroke();
+      chartCtx.setLineDash([]);
     }
 
-    // labels & legend
-    ctx.fillStyle = "#666";
-    ctx.font = "12px system-ui";
+    // labels
+    chartCtx.fillStyle = "#666";
+    chartCtx.font = "12px system-ui";
 
     const minTxt = `min: ${minY.toFixed(2)} €`;
     const maxTxt = `max: ${maxY.toFixed(2)} €`;
-    ctx.fillText(minTxt, pad, 18);
-    ctx.fillText(maxTxt, pad + 160, 18);
+    chartCtx.fillText(minTxt, pad, 18);
+    chartCtx.fillText(maxTxt, pad + 160, 18);
 
     const daysTxt = `${selectedDays} Tage`;
-    ctx.fillText(daysTxt, W - pad - ctx.measureText(daysTxt).width, 18);
+    chartCtx.fillText(daysTxt, W - pad - chartCtx.measureText(daysTxt).width, 18);
 
     const start = new Date(minX).toISOString().slice(0,10);
     const end = new Date(maxX).toISOString().slice(0,10);
-    ctx.fillText(start, pad, H - 10);
-    ctx.fillText(end, W - pad - ctx.measureText(end).width, H - 10);
+    chartCtx.fillText(start, pad, H - 10);
+    chartCtx.fillText(end, W - pad - chartCtx.measureText(end).width, H - 10);
 
-    ctx.fillText("Primär (—)", pad, 34);
-    ctx.fillText("Check (--)", pad + 110, 34);
-  }
-
-  function setDelta(elAbs, elPct, current, previous){
-    if(!Number.isFinite(current) || !Number.isFinite(previous)){
-      elAbs.textContent = "–";
-      elPct.textContent = "–";
-      elAbs.className = "delta";
-      return;
-    }
-    const diff = current - previous;
-    const pct = previous !== 0 ? (diff / previous) * 100 : 0;
-
-    elAbs.textContent = `${diff >= 0 ? "↑" : "↓"} ${fmtEUR(Math.abs(diff))}`;
-    elPct.textContent = `(${diff >= 0 ? "+" : "-"}${Math.abs(pct).toFixed(2)} %)`;
-
-    elAbs.className = "delta " + (diff >= 0 ? "up" : "down");
+    chartCtx.fillText("Primär (—)", pad, 34);
+    chartCtx.fillText("Check (--)", pad + 110, 34);
   }
 
   function loadBuys(){
@@ -384,53 +404,170 @@
     localStorage.setItem(BUYS_KEY, JSON.stringify(buys));
   }
 
-  function renderBuys(currentPrimary){
-    const buys = loadBuys();
-    const table = $("buysTable");
-    const body = $("buysBody");
-    const hint = $("buysHint");
+  function renderBuysAndPortfolioChart(currentPrimary){
+    const buys = loadBuys().slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));
 
+    // Render cards
+    buyCardsEl.innerHTML = "";
     if(!buys.length){
-      table.style.display = "none";
-      hint.textContent = "Noch keine Käufe gespeichert. (Wird lokal auf diesem Gerät gespeichert.)";
+      buysHintEl.style.display = "block";
+      drawEmpty(portCtx, portCanvas, "Keine Käufe vorhanden – füge Käufe hinzu für die Portfolio-Entwicklung.");
       return;
     }
+    buysHintEl.style.display = "none";
 
-    table.style.display = "table";
-    hint.textContent = "";
-    body.innerHTML = "";
-
-    let sumOz = 0, sumCost = 0, sumValue = 0;
+    let sumOz = 0;
+    let sumCost = 0;
 
     buys.forEach((b, idx) => {
       const oz = Number(b.oz);
-      const buyPrice = Number(b.price);
-      const cost = oz * buyPrice;
+      const price = Number(b.price);
+      const cost = oz * price;
       const value = Number.isFinite(currentPrimary) ? oz * currentPrimary : 0;
       const pl = value - cost;
 
       sumOz += oz;
       sumCost += cost;
-      sumValue += value;
 
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${b.date || "–"}</td>
-        <td class="right">${fmtNum(oz, 3)}</td>
-        <td class="right">${fmtEUR(buyPrice)}</td>
-        <td class="right">${fmtEUR(cost)}</td>
-        <td class="right">${Number.isFinite(currentPrimary) ? fmtEUR(value) : "–"}</td>
-        <td class="right"><span class="${pl>=0 ? "up" : "down"}">${pl>=0 ? "+" : "-"}${fmtEUR(Math.abs(pl))}</span></td>
-        <td class="right"><button class="btnSmall btnGhost" data-del="${idx}">Löschen</button></td>
+      const card = document.createElement("div");
+      card.className = "buyCard";
+      card.innerHTML = `
+        <div class="buyTop">
+          <div>
+            <span class="pill">${b.date || "–"}</span>
+          </div>
+          <div class="right">
+            <button class="btnSmall btnGhost" data-del="${idx}">Löschen</button>
+          </div>
+        </div>
+
+        <div class="buyGrid">
+          <div class="kv">
+            <small>Menge</small>
+            <strong>${fmtNum(oz, 3)} oz</strong>
+          </div>
+          <div class="kv right">
+            <small>Kaufpreis</small>
+            <strong>${fmtEUR(price)} / oz</strong>
+          </div>
+
+          <div class="kv">
+            <small>Wert heute</small>
+            <strong>${Number.isFinite(currentPrimary) ? fmtEUR(value) : "–"}</strong>
+          </div>
+          <div class="kv right">
+            <small>P/L</small>
+            <strong class="${pl>=0 ? "up" : "down"}">${pl>=0 ? "+" : "-"}${fmtEUR(Math.abs(pl))}</strong>
+          </div>
+        </div>
       `;
-      body.appendChild(tr);
+      buyCardsEl.appendChild(card);
     });
 
-    const sumPL = sumValue - sumCost;
-    $("sumOz").textContent = fmtNum(sumOz, 3);
-    $("sumCost").textContent = fmtEUR(sumCost);
-    $("sumValue").textContent = fmtEUR(sumValue);
-    $("sumPL").innerHTML = `<span class="${sumPL>=0 ? "up" : "down"}">${sumPL>=0 ? "+" : "-"}${fmtEUR(Math.abs(sumPL))}</span>`;
+    // Portfolio chart data: cumulative cost vs current value at each buy date
+    const series = [];
+    let cumOz = 0;
+    let cumCost = 0;
+
+    buys.forEach(b => {
+      const oz = Number(b.oz);
+      const price = Number(b.price);
+      const dt = Date.parse(String(b.date) + "T00:00:00Z");
+      if(!Number.isFinite(dt) || !Number.isFinite(oz) || !Number.isFinite(price)) return;
+
+      cumOz += oz;
+      cumCost += oz * price;
+
+      const valueNow = Number.isFinite(currentPrimary) ? cumOz * currentPrimary : NaN;
+
+      series.push({
+        t: dt,
+        cost: cumCost,
+        value: valueNow
+      });
+    });
+
+    drawPortfolioChart(series);
+
+    // Hint
+    const curValue = Number.isFinite(currentPrimary) ? sumOz * currentPrimary : NaN;
+    const plTotal = Number.isFinite(curValue) ? (curValue - sumCost) : NaN;
+    portfolioHint.textContent =
+      `Einstand gesamt: ${fmtEUR(sumCost)} · Wert heute: ${Number.isFinite(curValue)?fmtEUR(curValue):"–"} · P/L: ${Number.isFinite(plTotal)?(plTotal>=0?"+":"-")+fmtEUR(Math.abs(plTotal)):"–"}`;
+  }
+
+  function drawPortfolioChart(series){
+    const W = portCanvas.width, H = portCanvas.height;
+    portCtx.clearRect(0,0,W,H);
+
+    if(!series || series.length < 2){
+      drawEmpty(portCtx, portCanvas, "Zu wenig Käufe für Portfolio-Chart (mindestens 2 Käufe).");
+      return;
+    }
+
+    const pad = 40;
+
+    const xs = series.map(x => x.t);
+    const ysCost = series.map(x => x.cost);
+    const ysVal = series.map(x => x.value).filter(Number.isFinite);
+
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ysCost, ...(ysVal.length?ysVal:[Infinity]));
+    const maxY = Math.max(...ysCost, ...(ysVal.length?ysVal:[-Infinity]));
+
+    const X = x => pad + (x - minX) * (W - 2*pad) / (maxX - minX || 1);
+    const Y = y => H - pad - (y - minY) * (H - 2*pad) / (maxY - minY || 1);
+
+    // axes
+    portCtx.strokeStyle = "#ddd";
+    portCtx.lineWidth = 1;
+    portCtx.beginPath();
+    portCtx.moveTo(pad, pad);
+    portCtx.lineTo(pad, H-pad);
+    portCtx.lineTo(W-pad, H-pad);
+    portCtx.stroke();
+
+    // cost line
+    portCtx.strokeStyle = "#111";
+    portCtx.lineWidth = 2;
+    portCtx.beginPath();
+    series.forEach((pt,i)=>{
+      const x = X(pt.t), y = Y(pt.cost);
+      if(i===0) portCtx.moveTo(x,y); else portCtx.lineTo(x,y);
+    });
+    portCtx.stroke();
+
+    // value line (dashed)
+    portCtx.strokeStyle = "#888";
+    portCtx.lineWidth = 2;
+    portCtx.setLineDash([6,4]);
+    portCtx.beginPath();
+    let started = false;
+    series.forEach((pt)=>{
+      if(!Number.isFinite(pt.value)) return;
+      const x = X(pt.t), y = Y(pt.value);
+      if(!started){ portCtx.moveTo(x,y); started = true; }
+      else portCtx.lineTo(x,y);
+    });
+    portCtx.stroke();
+    portCtx.setLineDash([]);
+
+    // labels
+    portCtx.fillStyle = "#666";
+    portCtx.font = "12px system-ui";
+
+    const minTxt = `min: ${minY.toFixed(0)} €`;
+    const maxTxt = `max: ${maxY.toFixed(0)} €`;
+    portCtx.fillText(minTxt, pad, 18);
+    portCtx.fillText(maxTxt, pad + 160, 18);
+
+    const start = new Date(minX).toISOString().slice(0,10);
+    const end = new Date(maxX).toISOString().slice(0,10);
+    portCtx.fillText(start, pad, H - 10);
+    portCtx.fillText(end, W - pad - portCtx.measureText(end).width, H - 10);
+
+    portCtx.fillText("Einstand (—)", pad, 34);
+    portCtx.fillText("Wert heute (--)", pad + 130, 34);
   }
 
   async function refreshAll(){
@@ -438,11 +575,9 @@
     btn.disabled = true;
     btn.textContent = "Lade…";
     chartHint.textContent = "Lade Daten…";
-    resetDebug();
 
     try{
-      // price.json
-      const data = await fetchJson("data/price.json", "price");
+      const data = await fetchJson("data/price.json");
       const primary = data.primary?.eurPerOz;
       const check = data.check?.eurPerOz;
 
@@ -455,14 +590,10 @@
       asOfEl.textContent = data.asOf || "–";
 
       // Abweichung
-      if(Number.isFinite(check)){
-        setDelta(diffAbsEl, diffPctEl, primary, check);
-      } else {
-        diffAbsEl.textContent = "–";
-        diffPctEl.textContent = "–";
-      }
+      if(Number.isFinite(check)) setDelta(diffAbsEl, diffPctEl, primary, check);
+      else { diffAbsEl.textContent = "–"; diffPctEl.textContent = "–"; }
 
-      // Trend vs letzter Punkt
+      // Trend
       setDelta(trendAbsEl, trendPctEl, primary, lastPrimary);
       lastPrimary = primary;
 
@@ -477,23 +608,24 @@
 
       out.style.display = "block";
 
-      // history.jsonl + chart
+      // Price chart
       try{
-        historyCache = await fetchHistory();
-        drawChart(historyCache);
+        if(!historyCache) historyCache = await fetchHistory();
+        drawPriceChart(historyCache);
         chartHint.textContent = `Chart ok (${historyCache.length} Punkte).`;
       }catch(e){
-        drawEmpty("History fehlt (noch) oder nicht erreichbar.");
+        drawEmpty(chartCtx, chartCanvas, "History fehlt (noch) oder nicht erreichbar.");
         chartHint.textContent = "Chart: " + (e.message || "Fehler");
       }
 
-      // buys
-      renderBuys(primary);
+      // Buys + portfolio chart
+      renderBuysAndPortfolioChart(primary);
 
     }catch(e){
       err.textContent = "Fehler:\n" + (e.message || "unbekannt");
       out.style.display = "none";
-      drawEmpty("Fehler beim Laden.");
+      drawEmpty(chartCtx, chartCanvas, "Fehler beim Laden.");
+      drawEmpty(portCtx, portCanvas, "Fehler beim Laden.");
       chartHint.textContent = "Fehler.";
     }finally{
       btn.disabled = false;
@@ -502,23 +634,27 @@
   }
 
   // Events
-  btn.addEventListener("click", refreshAll);
+  btn.addEventListener("click", async () => {
+    // refresh history each time (to see new points quickly)
+    historyCache = null;
+    await refreshAll();
+  });
 
   document.querySelectorAll(".tab").forEach(t => {
     t.addEventListener("click", () => {
       document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
       t.classList.add("active");
       selectedDays = Number(t.dataset.days);
-      drawChart(historyCache || []);
+      drawPriceChart(historyCache || []);
     });
   });
 
-  // Delete single buy (event delegation)
-  $("buysTable").addEventListener("click", (e) => {
+  // Delete buy (delegation)
+  buyCardsEl.addEventListener("click", (e) => {
     const b = e.target.closest("button[data-del]");
     if(!b) return;
     const idx = Number(b.dataset.del);
-    const buys = loadBuys();
+    const buys = loadBuys().slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));
     buys.splice(idx, 1);
     saveBuys(buys);
     refreshAll();
@@ -546,7 +682,7 @@
     refreshAll();
   });
 
-  // Clear all buys
+  // Clear buys
   $("clearBuys").addEventListener("click", () => {
     localStorage.removeItem(BUYS_KEY);
     refreshAll();
@@ -575,7 +711,6 @@
       const text = await file.text();
       const data = JSON.parse(text);
       if(!Array.isArray(data)) throw new Error("JSON muss ein Array sein");
-      // minimal validation
       const cleaned = data
         .map(x => ({ date: String(x.date||""), oz: Number(x.oz), price: Number(x.price) }))
         .filter(x => x.date && Number.isFinite(x.oz) && x.oz>0 && Number.isFinite(x.price) && x.price>0);
@@ -589,13 +724,14 @@
     }
   });
 
-  // PWA / Offline: Service Worker
+  // PWA / Offline
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./service-worker.js").catch(()=>{});
   }
 
   // Initial
-  drawEmpty("Lade…");
+  drawEmpty(chartCtx, chartCanvas, "Lade…");
+  drawEmpty(portCtx, portCanvas, "Lade…");
   refreshAll();
 })();
 </script>
