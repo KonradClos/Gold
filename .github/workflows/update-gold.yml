@@ -1,169 +1,37 @@
-name: Update gold data
+name: Update gold prices
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/30 * * * *"
-  push:
-    paths:
-      - ".github/workflows/update-gold.yml"
+    # Jede Stunde (Minute 7) – gerne anpassen
+    - cron: "7 * * * *"
 
 permissions:
   contents: write
-
-concurrency:
-  group: update-gold
-  cancel-in-progress: true
 
 jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Fetch gold prices + update price & history (robust + seed)
-        shell: bash
+      - name: Use Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run updater
+        run: node update-prices.mjs
+
+      - name: Commit & push if changed
         run: |
-          set -euo pipefail
-          mkdir -p data
-
-          echo "Fetching Stooq CSVs (may be empty, handled gracefully)…"
-          curl -fLsS "https://stooq.com/q/l/?s=xaueur&f=sd2t2ohlc&e=csv" -o data/xaueur.csv || true
-          curl -fLsS "https://stooq.com/q/l/?s=xauusd&f=sd2t2ohlc&e=csv" -o data/xauusd.csv || true
-
-          echo "Fetching ECB USD/EUR…"
-          curl -fLsS \
-            -H "Accept: application/json" \
-            -A "Mozilla/5.0 (GitHub Actions)" \
-            "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?lastNObservations=1&format=sdmx-json" \
-            -o data/ecb.json
-
-          python3 - << 'EOF'
-          import csv, json, datetime, os, sys
-
-          def read_latest_csv(path):
-              if not os.path.exists(path) or os.path.getsize(path) == 0:
-                  return None
-              with open(path, newline="", encoding="utf-8") as f:
-                  rows = list(csv.DictReader(f))
-              if not rows:
-                  return None
-              r = rows[-1]
-              return {
-                  "date": r.get("Date"),
-                  "time": r.get("Time",""),
-                  "close": float(r["Close"])
-              }
-
-          def read_ecb_usd_per_eur(path):
-              with open(path, encoding="utf-8") as f:
-                  ecb = json.load(f)
-              series = ecb["dataSets"][0]["series"]
-              skey = next(iter(series))
-              obs = series[skey]["observations"]
-              okey = next(iter(obs))
-              return float(obs[okey][0])
-
-          # load last stored price if exists (fallback when Stooq is empty)
-          last_price = None
-          if os.path.exists("data/price.json"):
-              with open("data/price.json", encoding="utf-8") as f:
-                  last_price = json.load(f)
-
-          xaueur = read_latest_csv("data/xaueur.csv")
-          xauusd = read_latest_csv("data/xauusd.csv")
-          usd_per_eur = read_ecb_usd_per_eur("data/ecb.json")
-
-          if xaueur and xauusd:
-              eur_primary = xaueur["close"]
-              eur_check = xauusd["close"] / usd_per_eur
-              stooq_date = xaueur["date"]
-              stooq_time = xaueur["time"]
-          elif last_price:
-              print("⚠️ Stooq empty – using last stored price")
-              eur_primary = float(last_price["primary"]["eurPerOz"])
-              eur_check = float(last_price["check"]["eurPerOz"])
-              stooq_date = last_price["primary"].get("stooqDate","")
-              stooq_time = last_price["primary"].get("stooqTime","")
-          else:
-              sys.exit("No Stooq data and no previous price.json available")
-
-          asof = datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
-
-          price = {
-              "asOf": asof,
-              "primary": {
-                  "source": "stooq-xaueur",
-                  "eurPerOz": eur_primary,
-                  "stooqDate": stooq_date,
-                  "stooqTime": stooq_time
-              },
-              "check": {
-                  "source": "stooq-xauusd + ecb-usd-per-eur",
-                  "eurPerOz": eur_check,
-                  "usdPerEur": usd_per_eur,
-                  "xauusdUsdPerOz": eur_check * usd_per_eur,
-                  "stooqDate": stooq_date,
-                  "stooqTime": stooq_time
-              }
-          }
-
-          # write latest snapshot
-          with open("data/price.json", "w", encoding="utf-8") as f:
-              json.dump(price, f, ensure_ascii=False, indent=2)
-
-          # append history point
-          history_path = "data/history.jsonl"
-          point = {
-              "asOf": asof,
-              "eurPerOz_primary": eur_primary,
-              "eurPerOz_check": eur_check,
-              "usdPerEur": usd_per_eur
-          }
-
-          with open(history_path, "a+", encoding="utf-8") as f:
-              f.write(json.dumps(point, ensure_ascii=False) + "\n")
-
-          # ---- SEED HISTORY (only if file has < 2 lines) ----
-          try:
-              with open(history_path, "r", encoding="utf-8") as f:
-                  lines = [ln for ln in f.read().splitlines() if ln.strip()]
-          except FileNotFoundError:
-              lines = []
-
-          if len(lines) < 2:
-              print("🌱 Seeding history.jsonl with a few backfilled points (first-time setup)…")
-              base = point.copy()
-              base_dt = datetime.datetime.fromisoformat(base["asOf"].replace("Z",""))
-
-              seed_points = []
-              # create 7 extra points (yesterday..7 days ago)
-              for i in range(1, 8):
-                  dt = base_dt - datetime.timedelta(days=i)
-                  p = base.copy()
-                  p["asOf"] = dt.replace(microsecond=0).isoformat() + "Z"
-                  seed_points.append(p)
-
-              # rewrite file with: older points first, then current point last
-              all_points = list(reversed(seed_points)) + [point]
-              with open(history_path, "w", encoding="utf-8") as f:
-                  for p in all_points:
-                      f.write(json.dumps(p, ensure_ascii=False) + "\n")
-          EOF
-
-      - name: Commit & push
-        shell: bash
-        run: |
-          set -e
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/price.json data/history.jsonl
-
           if git diff --cached --quiet; then
-            echo "No changes to commit."
-            exit 0
+            echo "No changes."
+          else
+            git commit -m "Update gold prices"
+            git push
           fi
-
-          git commit -m "Update gold price + history (seeded)"
-          git push
