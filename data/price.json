@@ -1,16 +1,16 @@
 {
-  "asOf": "2026-03-23T03:17:52Z",
+  "asOf": "2026-03-23T05:44:07Z",
   "primary": {
     "source": "stooq-xaueur",
-    "eurPerOz": 3776.18,
+    "eurPerOz": 3746.47,
     "stooqDate": "2026-03-23",
     "stooqTime": "00:00:00"
   },
   "check": {
     "source": "stooq-xauusd + ecb-usd-per-eur",
-    "eurPerOz": 3773.440069234098,
+    "eurPerOz": 3740.8654262224145,
     "usdPerEur": 1.1555,
-    "xauusdUsdPerOz": 4360.21,
+    "xauusdUsdPerOz": 4322.57,
     "stooqDate": "2026-03-23",
     "stooqTime": "00:00:00"
   }
