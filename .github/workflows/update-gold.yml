@@ -3,11 +3,13 @@ name: Update gold prices
 on:
   workflow_dispatch:
   schedule:
-    # Jede Stunde (Minute 7) – gerne anpassen
     - cron: "7 * * * *"
 
 permissions:
   contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   update:
