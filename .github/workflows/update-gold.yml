@@ -8,20 +8,24 @@ on:
 permissions:
   contents: write
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+concurrency:
+  group: update-gold-prices
+  cancel-in-progress: false
 
 jobs:
   update:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Use Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Run updater
         run: node update-prices.mjs
@@ -35,5 +39,6 @@ jobs:
             echo "No changes."
           else
             git commit -m "Update gold prices"
-            git push
+            git pull --rebase origin main
+            git push origin main
           fi
