@@ -1,9 +1,9 @@
 {
-  "asOf": "2026-04-01T23:45:52Z",
+  "asOf": "2026-04-02T03:18:36Z",
   "primary": {
     "source": "stooq-xaueur",
     "eurPerOz": 0,
-    "stooqDate": "2026-04-01",
+    "stooqDate": "2026-04-02",
     "stooqTime": "00:00:00"
   },
   "check": {
@@ -11,7 +11,7 @@
     "eurPerOz": 0,
     "usdPerEur": 1.16,
     "xauusdUsdPerOz": 0,
-    "stooqDate": "2026-04-01",
+    "stooqDate": "2026-04-02",
     "stooqTime": "00:00:00"
   }
 }
