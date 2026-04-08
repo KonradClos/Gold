@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Gold Portfolio
+Comment=Öffnet dein Gold-Portfolio über lokalen Webserver
+Exec=/home/konrad/Projects/shared/Gold/start-gold.sh
+Icon=/home/konrad/Projects/shared/Gold/gold-icon.svg
+Terminal=false
+Categories=Office;Finance;
