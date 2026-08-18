@@ -1,13 +1,13 @@
 {
-  "asOf": "2026-08-18T04:43:48Z",
+  "asOf": "2026-08-18T05:36:55Z",
   "primary": {
     "source": "gold-api.com + ecb",
-    "eurPerOz": 3790.65
+    "eurPerOz": 3787.29
   },
   "check": {
     "source": "gold-api.com + ecb",
-    "eurPerOz": 3790.65,
+    "eurPerOz": 3787.29,
     "usdPerEur": 1.16,
-    "xauusdUsdPerOz": 4394.5
+    "xauusdUsdPerOz": 4390.6
   }
 }
